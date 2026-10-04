@@ -203,7 +203,47 @@ export function renderMenfessToCanvas(canvas, {
       const ty = h * (actualPosY / 100);
       ctx.translate(tx, ty);
       ctx.rotate((actualRotate * Math.PI) / 180);
-      ctx.font = `${senderCfg.fontWeight || 'bold'} ${actualFontSizeName}px ${senderCfg.fontFamily || template.fontFamily}`;
+
+      // Auto-shrink nama. Anchor sender adalah TEPI KIRI (lihat fillText
+      // di bawah), jadi nama melebar ke kanan; batas kanannya diambil dari
+      // tepi aman kartu yang sama dengan blok pesan (bounds.x + bounds.w).
+      // Yang dibandingkan adalah extent VISUAL setelah rotasi, bukan lebar
+      // teks mentah: teks miring memakai lebar lebih besar di layar sehingga
+      // nama yang "muat" secara aritmetika bisa tetap melewati tepi kartu.
+      //
+      // senderCfg.minFontScale (bukan `minFontScale`) punya lantai agar nama
+      // tidak menyusut jadi tidak terbaca untuk nama yang luar biasa panjang.
+      // Di atas lantai itu nama tetap meluber - tidak ada ukuran yang bisa
+      // memuatnya dengan rapi, jadi lebih baik terlalu besar daripada
+      // setipis benang.
+      const nameFontFamily = senderCfg.fontFamily || template.fontFamily;
+      const nameFontWeight = senderCfg.fontWeight || 'bold';
+      const prefix = hasCustomName ? (senderCfg.prefix || '') : '';
+      const nameText = `${prefix}${displayName}`;
+
+      const nameRightEdge = bounds.x + bounds.w;
+      const nameAvailPx = Math.max(0, (nameRightEdge - actualPosX / 100) * w);
+      const nameRad = (actualRotate * Math.PI) / 180;
+      const nameCos = Math.abs(Math.cos(nameRad));
+      const nameSin = Math.abs(Math.sin(nameRad));
+
+      let nameFontSize = actualFontSizeName;
+      ctx.font = `${nameFontWeight} ${nameFontSize}px ${nameFontFamily}`;
+      if (nameAvailPx > 0 && nameCos > 0) {
+        // Cap height ~0.72 * fontSize: komponen teks yang tegak, yang ikut
+        // menambah lebar horizontal begitu teks dimiringkan.
+        const capH = nameFontSize * 0.72;
+        const visualW = ctx.measureText(nameText).width * nameCos + capH * nameSin;
+        if (visualW > nameAvailPx) {
+          const floor = senderCfg.minFontScale ?? 0.6;
+          nameFontSize = Math.max(
+            actualFontSizeName * floor,
+            (actualFontSizeName * nameAvailPx) / visualW,
+          );
+          ctx.font = `${nameFontWeight} ${nameFontSize}px ${nameFontFamily}`;
+        }
+      }
+
       ctx.fillStyle = senderCfg.color || '#ffffff';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
@@ -214,8 +254,7 @@ export function renderMenfessToCanvas(canvas, {
         ctx.shadowOffsetY = 1;
       }
 
-      const prefix = hasCustomName ? (senderCfg.prefix || '') : '';
-      ctx.fillText(`${prefix}${displayName}`, 0, 0);
+      ctx.fillText(nameText, 0, 0);
       ctx.restore();
     }
   };

@@ -15,7 +15,13 @@ export default function ExportModal({ menfes, onClose }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
   const currentTemplate = getTemplateById(selectedTemplateId);
 
-  const [ratio, setRatio] = useState(currentTemplate.defaultRatio || '1:1');
+  // Rasio IKUT TEMPLATE, bukan pilihan user. Semua template memakai 4:5 dan
+  // zona aman, posisi pesan, serta posisi sender di gambar sudah diukur untuk
+  // rasio itu. Tombol rasio sebelumnya membiarkan 1:1 dipilih, dan di 1:1
+  // cover-crop memotong tinggi gambar sehingga posisi label yang dibaked
+  // bergeser ke bawah - nama lalu melayang jauh di atas labelnya. Menghapus
+  // pilihan itu lebih jujur daripada menambal per-rasio di tiga template.
+  const ratio = currentTemplate.defaultRatio || '4:5';
   const [fontSize, setFontSize] = useState(currentTemplate.defaultFontSize || 36);
   const [fontSizeName, setFontSizeName] = useState(currentTemplate.defaultFontSizeName || 28);
   const [downloading, setDownloading] = useState(false);
@@ -58,7 +64,6 @@ export default function ExportModal({ menfes, onClose }) {
   function handleSelectTemplate(tmplId) {
     const tmpl = getTemplateById(tmplId);
     setSelectedTemplateId(tmplId);
-    setRatio(tmpl.defaultRatio || '1:1');
     setFontSize(tmpl.defaultFontSize);
     setFontSizeName(tmpl.defaultFontSizeName);
     setPosX(tmpl.defaultSender.posX);
@@ -356,29 +361,17 @@ export default function ExportModal({ menfes, onClose }) {
 
           {/* Controls */}
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            {/* Rasio */}
+            {/* Rasio — mengikuti template, read-only */}
             <div>
               <label className="block text-xs font-mono font-semibold text-parchment-400 mb-2 tracking-widest uppercase">
                 Rasio IG
               </label>
-              <div className="flex gap-2">
-                {['1:1', '4:5'].map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setRatio(r)}
-                    className={`flex-1 py-2 text-sm font-mono font-semibold rounded-lg border transition-all touch-manipulation ${
-                      ratio === r
-                        ? 'bg-brand-700 text-parchment-100 border-brand-700'
-                        : 'bg-ink-800 text-ink-200 border-ink-600 hover:border-ink-500 hover:text-parchment-300'
-                    }`}
-                  >
-                    {r}
-                  </button>
-                ))}
+              <div className="py-2 text-sm font-mono font-semibold rounded-lg border border-brand-700 bg-brand-700 text-parchment-100 text-center select-none">
+                {ratio}
               </div>
               <p className="text-xs text-ink-200 mt-1 font-mono">
                 {ratio === '1:1' ? '1080 × 1080 (Square)' : '1080 × 1350 (Portrait)'}
+                <span className="block text-ink-300 mt-0.5">ikut template</span>
               </p>
             </div>
 
