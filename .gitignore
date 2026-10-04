@@ -41,3 +41,10 @@ backend/node_modules/.prisma/
 
 # Graphify output (graph.html 350KB + cache, hasil generate lokal)
 graphify-out/
+
+# Script investigasi satu-off (alat ukur koneksi & pool, bukan bagian aplikasi).
+# ukur-satu-kondisi menulis baris admin sementara ke database, jadi tidak boleh
+# ikut ter-deploy atau ter-push.
+backend/perf-probe.mjs
+backend/perf-discriminate.mjs
+backend/ukur-satu-kondisi.cjs
