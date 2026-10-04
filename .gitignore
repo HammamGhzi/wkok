@@ -35,3 +35,9 @@ Thumbs.db
 
 # Prisma generated (di-generate saat deploy)
 backend/node_modules/.prisma/
+
+# CodeGraph index (database lokal per mesin, jangan di-commit)
+.codegraph/
+
+# Graphify output (graph.html 350KB + cache, hasil generate lokal)
+graphify-out/
