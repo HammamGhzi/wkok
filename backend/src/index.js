@@ -8,6 +8,7 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const menfesRoutes = require('./routes/menfes');
 const adminRoutes = require('./routes/admin');
+const authMiddleware = require('./middleware/auth');
 const { router: telegramRouter, registerTelegramCallbacks } = require('./routes/telegram');
 const { initBot } = require('./services/telegramBot');
 
@@ -53,6 +54,25 @@ app.use(cors({
 // ─── Body Parser ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// ─── Unggah gambar untuk publikasi Instagram ──────────────────────────────────
+// SATU-SATUNYA route yang dipasang DI ATAS body parser global, dan itu wajib.
+//
+// express.json() dan express.raw() sama-sama melompat kalau request sudah
+// diparse. Karena body parser global di atas sudah lebih dulu, parser 8 MB
+// yang menempel di routes/admin.js tidak akan pernah dipanggil kalau route ini
+// tidak dipasang di sini. Penjelasan panjangnya ada di routes/admin.js.
+//
+// Urutan di dalam route ini juga disengaja: auth DI DAHULU parser gambar.
+// Kalau dibalik, siapa pun tanpa token bisa memaksa server membaca 8 MB per
+// request tanpa batas, karena globalLimiter di bawah juga baru aktif setelah
+// body parser.
+app.post(
+  '/api/admin/menfes/:id/post',
+  authMiddleware,
+  adminRoutes.parserGambar,
+  adminRoutes.postMenfesToInstagram
+);
 
 // ─── Serve uploaded template ──────────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

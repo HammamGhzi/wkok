@@ -38,16 +38,31 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_user');
-      // Redirect ke login jika bukan di halaman login
-      if (!window.location.pathname.includes('/admin/login')) {
-        window.location.href = '/admin/login';
-      }
-    }
+    tangani401(error.response?.status);
     return Promise.reject(error);
   }
 );
+
+// ─── Helper untuk jalur yang tidak lewat axios ──────────────────────────────
+//
+// Unggah gambar ke Instagram memakai fetch, bukan axios (alasannya di
+// adminAPI.postInstagram). Supaya jalur itu tidak jadi jalur tanpa pengaman,
+// dua hal yang di interceptor dipindahkan ke sini dan dipanggil dari keduanya.
+
+export function ambilToken() {
+  return localStorage.getItem('admin_token');
+}
+
+export function tangani401(status) {
+  if (status !== 401) return;
+  localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_user');
+  // Redirect ke login jika bukan di halaman login
+  if (!window.location.pathname.includes('/admin/login')) {
+    window.location.href = '/admin/login';
+  }
+}
+
+export { BASE_URL };
 
 export default api;

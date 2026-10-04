@@ -355,13 +355,13 @@ export default function HomePage() {
                 )}
               </div>
 
-              {/* Info Privasi */}
+                {/* Info Privasi */}
               <div className={`bg-parchment-100 dark:bg-ink-800/90 border border-parchment-400 dark:border-ink-600 rounded-xl p-3 ${step === 3 ? '' : 'hidden sm:block'}`}>
                 <p className="text-xs text-ink-700 dark:text-parchment-300 flex items-center gap-2">
                   <svg className="w-4 h-4 shrink-0 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
-                  <span>Identitasmu <strong className="text-ink-900 dark:text-parchment-100">100% aman & anonim</strong></span>
+                  <span>Identitasmu <strong className="text-ink-900 dark:text-parchment-100 font-semibold">100% aman & anonim untuk Instagram</strong> (nama akan muncul di bawah cerita menfess ini)</span>
                 </p>
               </div>
 

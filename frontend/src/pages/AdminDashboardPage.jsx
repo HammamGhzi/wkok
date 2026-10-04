@@ -134,6 +134,25 @@ export default function AdminDashboardPage() {
     } finally { setActionLoading(null); }
   }
 
+  async function handleRetry(id) {
+    try {
+      await prisma.menfes.update({
+        where: { id },
+        data: {
+          igStatus: 'APPROVED',
+          igMediaId: null,
+          igPermalink: null,
+          igError: null,
+          igPublishedAt: null,
+        },
+      });
+      toast.success('Status direset. Buka Export modal untuk publish ulang.');
+      loadData();
+    } catch (err) {
+      toast.error('Gagal mereset status: ' + (err.response?.data?.error || err.message));
+    }
+  }
+
   async function handleDelete(id) {
     setActionLoading(id + '_delete');
     try {
@@ -423,10 +442,28 @@ export default function AdminDashboardPage() {
                   <div className="w-1 bg-brand-700 shrink-0 group-hover:bg-brand-600 transition-colors" />
 
                   <div className="flex-1 p-3 sm:p-5 space-y-3 min-w-0">
-                    {/* Header row: status + tanggal */}
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                    {/* Header row: status + tanggal + IG */}
+                    <div className="flex items-center gap-3">
                       <StatusBadge status={item.status} />
                       <span className="text-[10px] sm:text-xs text-ink-200 font-mono">{formatDate(item.createdAt)}</span>
+                      {item.igStatus && (
+                        <div className="flex items-center gap-2 text-[9px] text-ink-400 font-mono">
+                          {item.igStatus === 'PUBLISHED' && <span className="text-green-400">Sudah tayang</span>}
+                          {item.igStatus === 'FAILED' && (
+                            <>
+                              <span className="text-amber-400">Gagal</span>
+                              <button
+                                onClick={() => handleRetry(item.id)}
+                                className="ml-2 text-brand-400 hover:text-brand-300 text-[9px] font-mono underline"
+                                title="Coba publikasi lagi"
+                              >
+                                Kembali
+                              </button>
+                            </>
+                          )}
+                          {item.igMediaId && <span>{item.igMediaId.substring(0, 8)}...</span>}
+                        </div>
+                      )}
                     </div>
 
                     {/* Pesan */}

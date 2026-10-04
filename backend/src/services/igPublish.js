@@ -70,18 +70,20 @@ function baseUrlPublik() {
 }
 
 /**
- * Simpan buffer gambar ke disk dan kembalikan URL publiknya.
+ * Periksa buffer gambar sebelum apa pun yang menyentuh disk atau database.
  *
- * Nama file dibangun dari id menfes dan angka acak, TIDAK PERNAH dari input
- * pengguna. Nama dari input membuka path traversal: "../../.env" sebagai
- * nama file akan menulis ke mana saja di disk.
+ * Dipisah dari simpanGambar supaya controller bisa memanggilnya duluan. Kalau
+ * pemeriksaan baru terjadi di dalam simpanGambar, tipe gambar yang salah sudah
+ * terlanjur mengklaim hak proses lalu menandai menfes sebagai GAGAL, padahal
+ * menfes itu tidak pernah dicoba. Input yang salah adalah kesalahan admin, dan
+ * harus dibalas sebagai 400 tanpa mengubah apa pun.
  *
  * @param {Buffer} buffer
  * @param {string} mimeType
- * @param {string} menfesId
- * @returns {Promise<{url: string, namaFile: string}>}
+ * @returns {string} ekstensi hasil, 'jpg' atau 'png'
+ * @throws {Error} dengan pesan yang bisa langsung ditampilkan ke admin
  */
-async function simpanGambar(buffer, mimeType, menfesId) {
+function periksaGambar(buffer, mimeType) {
   const ext = TIPE_BOKEH.get(String(mimeType || '').toLowerCase());
   if (!ext) {
     throw new Error(
@@ -96,6 +98,23 @@ async function simpanGambar(buffer, mimeType, menfesId) {
       `Gambar ${(buffer.length / 1024 / 1024).toFixed(1)} MB, batas ${UKURAN_MAKS / 1024 / 1024} MB.`,
     );
   }
+  return ext;
+}
+
+/**
+ * Simpan buffer gambar ke disk dan kembalikan URL publiknya.
+ *
+ * Nama file dibangun dari id menfes dan angka acak, TIDAK PERNAH dari input
+ * pengguna. Nama dari input membuka path traversal: "../../.env" sebagai
+ * nama file akan menulis ke mana saja di disk.
+ *
+ * @param {Buffer} buffer
+ * @param {string} mimeType
+ * @param {string} menfesId
+ * @returns {Promise<{url: string, namaFile: string}>}
+ */
+async function simpanGambar(buffer, mimeType, menfesId) {
+  const ext = periksaGambar(buffer, mimeType);
 
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
 
@@ -265,8 +284,10 @@ async function terbitkan({ menfesId, imageBuffer, mimeType, caption }) {
 module.exports = {
   terbitkan,
   simpanGambar,
+  periksaGambar,
   klaimKerja,
   baseUrlPublik,
+  TIPE_BOKEH,
   UKURAN_MAKS,
   UMUR_PENDING_MS,
   UPLOAD_DIR,

@@ -2,8 +2,14 @@ import { useRef, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { TEMPLATES, getTemplateById, parseTemplateFromMenfes } from '../config/templates';
 import { renderMenfessToCanvas, CANVAS_SIZE } from '../utils/drawMenfessCanvas';
+import { adminAPI } from '../api';
 
-export default function ExportModal({ menfes, onClose }) {
+// Batas caption mengikut Instagram. Menyalin angka dari backend lebih baik
+// daripada menebak: kalau backend yang menolak, admin sudah terlanjur mengetik
+// 300 karakter sebelum tahu jawabannya.
+const BATAS_CAPTION = 2200;
+
+export default function ExportModal({ menfes, onClose, onPosted }) {
   const canvasRef = useRef(null);
   const controlsRef = useRef(null);
   const bodyRef = useRef(null);
@@ -25,6 +31,10 @@ export default function ExportModal({ menfes, onClose }) {
   const [fontSize, setFontSize] = useState(currentTemplate.defaultFontSize || 36);
   const [fontSizeName, setFontSizeName] = useState(currentTemplate.defaultFontSizeName || 28);
   const [downloading, setDownloading] = useState(false);
+  // Caption diisi dari igCaption supaya menfes yang gagal tayang dan mau dicoba
+  // lagi tidak mengharuskan admin mengetik ulang teksnya.
+  const [caption, setCaption] = useState(menfes?.igCaption || '');
+  const [posting, setPosting] = useState(false);
   const [bgStatus, setBgStatus] = useState('loading');
   const [posX, setPosX] = useState(currentTemplate.defaultSender.posX);
   const [posY, setPosY] = useState(currentTemplate.defaultSender.posY);
@@ -167,28 +177,44 @@ export default function ExportModal({ menfes, onClose }) {
     return () => el.removeEventListener('scroll', sync);
   }, [isDesktop]);
 
+  // Render ke canvas lalu jadi Blob. Dipisah karena dua tombol butuh hasil
+  // yang sama persis: yang diunduh admin dan yang tayang di Instagram harus
+  // gambar yang identik, bukan dua render yang mungkin berbeda.
+  async function renderKeBlob() {
+    const canvas = canvasRef.current;
+    renderMenfessToCanvas(canvas, {
+      template: currentTemplate,
+      ratio,
+      message: menfes?.message || '',
+      senderName: menfes?.senderName || '',
+      isAnon: !menfes?.senderName,
+      fontSize,
+      fontSizeName,
+      posX,
+      posY,
+      rotate,
+      msgX,
+      msgY,
+      msgRotate,
+    });
+    await new Promise((r) => setTimeout(r, 300));
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (b) =>
+          b
+            ? resolve(b)
+            : reject(new Error('Browser gagal mengubah canvas jadi gambar.')),
+        'image/jpeg',
+        0.95
+      );
+    });
+  }
+
   async function handleDownload() {
     setDownloading(true);
     try {
-      const canvas = canvasRef.current;
-      renderMenfessToCanvas(canvas, {
-        template: currentTemplate,
-        ratio,
-        message: menfes?.message || '',
-        senderName: menfes?.senderName || '',
-        isAnon: !menfes?.senderName,
-        fontSize,
-        fontSizeName,
-        posX,
-        posY,
-        rotate,
-        msgX,
-        msgY,
-        msgRotate,
-      });
-      await new Promise((r) => setTimeout(r, 300));
-
-      const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.95));
+      const blob = await renderKeBlob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -203,6 +229,44 @@ export default function ExportModal({ menfes, onClose }) {
       setDownloading(false);
     }
   }
+
+  async function handlePost() {
+    if (caption.length > BATAS_CAPTION) {
+      toast.error(`Caption ${caption.length} karakter, batas ${BATAS_CAPTION}.`);
+      return;
+    }
+    setPosting(true);
+    try {
+      const blob = await renderKeBlob();
+
+      // Content-Type sengaja tidak diisi. Browser yang memasang boundary
+      // multipart; menyebut multipart/form-data secara manual tanpa boundary
+      // membuat server tidak bisa mengurai body.
+      const fd = new FormData();
+      fd.append('image', blob, `menfes-${currentTemplate.id}.jpg`);
+      fd.append('caption', caption);
+
+      const hasil = await adminAPI.postInstagram(menfes.id, fd);
+      toast.success('Tayang di Instagram.');
+      onPosted?.(hasil.data);
+    } catch (err) {
+      // err.response null berarti gagalnya di jaringan atau timeout, bukan
+      // di server, jadi pesannya sudah disiapkan di api/index.js.
+      const pesan =
+        err.response?.data?.error || err.message || 'Gagal memposting ke Instagram.';
+      toast.error(pesan, { duration: 8000 });
+      console.error(err);
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  // Menfes yang belum APPROVED tidak boleh tayang, jadi tombolnya dimatikan
+  // di sini juga, bukan hanya ditolak server. Server tetap menjaganya; ini
+  // cuma supaya admin tidak menunggu jawaban yang pasti 409.
+  const belumDisetujui = menfes?.status !== 'APPROVED';
+  const sudahTayang = menfes?.igStatus === 'PUBLISHED';
+  const sibuk = downloading || posting;
 
   const { w, h } = CANVAS_SIZE[ratio] || CANVAS_SIZE['1:1'];
 
@@ -547,21 +611,70 @@ export default function ExportModal({ menfes, onClose }) {
               <span className="text-brand-600">"</span>{menfes.message}<span className="text-brand-600">"</span>
             </p>
           </div>
+
+          {/* Caption Instagram */}
+          <div className="bg-ink-800 border border-ink-600 rounded-xl p-3">
+            <div className="flex justify-between items-baseline mb-1.5">
+              <p className="text-[10px] font-mono font-bold text-ink-200 tracking-widest uppercase">
+                Caption Instagram
+              </p>
+              <span
+                className={`text-[10px] font-mono ${
+                  caption.length > BATAS_CAPTION ? 'text-red-400' : 'text-ink-200'
+                }`}
+              >
+                {caption.length}/{BATAS_CAPTION}
+              </span>
+            </div>
+            <textarea
+              value={caption}
+              onChange={(e) => setCaption(e.target.value.slice(0, BATAS_CAPTION + 200))}
+              rows={4}
+              placeholder="Teks yang muncul di bawah gambar. Kosongkan kalau mau posting tanpa caption."
+              className="w-full bg-ink-700 border border-ink-600 rounded-lg px-2.5 py-2 text-sm text-parchment-300 font-mono resize-y focus:border-brand-500 focus:outline-none"
+            />
+            <p className="text-[10px] text-ink-200 font-mono mt-1.5">
+              Caption ditulis di sini, bukan di gambar. Musik tetap ditambahkan
+              manual di aplikasi Instagram.
+            </p>
+
+            {/* Status publikasi. Satu-satunya tempat admin melihat apakah
+                menfes ini sudah pernah tayang, supaya tidak ada alasan untuk
+                menekan tombol yang sama dua kali. */}
+            {menfes?.igStatus && (
+              <p
+                className={`text-[11px] font-mono mt-2 ${
+                  sudahTayang ? 'text-green-400' : 'text-amber-400'
+                }`}
+              >
+                {sudahTayang ? 'Sudah tayang' : 'Gagal tayang'}
+                {menfes.igPermalink && (
+                  <>
+                    {' — '}
+                    <a
+                      href={menfes.igPermalink}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="underline hover:text-parchment-300"
+                    >
+                      lihat
+                    </a>
+                  </>
+                )}
+                {menfes.igError && !sudahTayang && ` — ${menfes.igError}`}
+              </p>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Aksi — footer nempel, tidak ikut scroll */}
+      {/* Footer buttons container - the correct structure */}
         <div className="flex-none flex gap-3 px-4 sm:px-5 py-3 border-t border-ink-600">
-          <button
-            onClick={onClose}
-            className="btn-secondary flex-1 font-mono text-sm py-3.5 sm:py-3 touch-manipulation"
-          >
-            Batal
-          </button>
+          {/* Download Button */}
           <button
             onClick={handleDownload}
-            disabled={downloading}
-            className="btn-primary flex-1 font-mono text-sm flex items-center justify-center gap-2 py-3.5 sm:py-3 touch-manipulation"
+            disabled={sibuk}
+            className="btn-secondary flex-1 font-mono text-sm flex items-center justify-center gap-2 py-3.5 sm:py-3 touch-manipulation"
           >
             {downloading ? (
               <>
@@ -577,6 +690,37 @@ export default function ExportModal({ menfes, onClose }) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Download JPG
+              </>
+            )}
+          </button>
+
+          {/* Post Button */}
+          <button
+            onClick={handlePost}
+            disabled={sibuk || belumDisetujui || sudahTayang}
+            title={
+              belumDisetujui
+                ? 'Approve menfes ini dulu di dashboard.'
+                : sudahTayang
+                  ? 'Menfes ini sudah pernah tayang.'
+                  : 'Publikasikan ke Instagram'
+            }
+            className="btn-primary flex-1 font-mono text-sm flex items-center justify-center gap-2 py-3.5 sm:py-3 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {posting ? (
+              <>
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Tayang...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {sudahTayang ? 'Sudah Tayang' : belumDisetujui ? 'Perlu Approve' : 'Post ke IG'}
               </>
             )}
           </button>
