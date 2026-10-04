@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
 import { adminAPI } from '../api';
 import ExportModal from '../components/ExportModal';
-import { parseTemplateFromMenfes, getTemplateById } from '../config/templates';
+import { TEMPLATES, parseTemplateFromMenfes, getTemplateById } from '../config/templates';
 import { clampPage, paginationItems } from '../utils/pagination.js';
 
 const STATUS_TABS = [
@@ -450,6 +450,9 @@ export default function AdminDashboardPage() {
                       const tmpl = getTemplateById(tmplId);
                       const isTemplateOnly = item.senderInfo && (
                         item.senderInfo.toLowerCase().includes('template') ||
+                        // Data lama sebelum template Classic dihapus: senderInfo-nya
+                        // berisi 'Classic Dark', bukan 'template ...'. Tanpa cek ini,
+                        // baris itu akan tampil seolah-olah info pengirim dari user.
                         item.senderInfo.toLowerCase().includes('classic')
                       );
 
@@ -476,7 +479,7 @@ export default function AdminDashboardPage() {
                     })()}
 
                     {!item.senderName && !item.senderInfo && (
-                      <p className="text-xs text-ink-200 font-mono italic">Dari Seseorang · Classic</p>
+                      <p className="text-xs text-ink-200 font-mono italic">Dari Seseorang · {TEMPLATES[0].badge}</p>
                     )}
 
                     {item.approvedAt && (

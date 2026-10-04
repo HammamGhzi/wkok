@@ -11,11 +11,11 @@ export default function HomePage() {
   const [message, setMessage] = useState('');
   const [isAnon, setIsAnon] = useState(true);
   const [senderName, setSenderName] = useState('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('classic');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('template1');
   const [showPreview, setShowPreview] = useState(true); // Default tampil agar user langsung melihat bentuk aslinya
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState('Classic Dark');
+  const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState('Template 1');
   const [step, setStep] = useState(1);
   const [darkMode, setDarkMode] = useState(false);
 
@@ -67,7 +67,7 @@ export default function HomePage() {
     setMessage('');
     setSenderName('');
     setIsAnon(true);
-    setSelectedTemplateId('classic');
+    setSelectedTemplateId('template1');
     setShowPreview(true);
     setStep(1);
   }
