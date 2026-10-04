@@ -17,7 +17,7 @@
  *
  * DB: MariaDB lokal, bukan produksi.
  */
-process.chdir('C:\\Users\\AcerAG14\\Documents\\Project\\menfs\\backend');
+process.chdir(__dirname);
 const path = require('path');
 const { spawn } = require('child_process');
 

@@ -9,7 +9,12 @@
  *
  * DB: MariaDB lokal, bukan produksi.
  */
-process.chdir('C:\\Users\\AcerAG14\\Documents\\Project\\menfs\\backend');
+
+// chdir ke folder file ini, bukan ke path absolut yang diketik tangan. Path
+// absolut seperti ini rusak begitu folder project dipindah atau di-clone di
+// tempat lain, dan gejalanya hanya ENOENT yang tidak mengarah ke penyebabnya.
+// __dirname selalu benar, di komputer mana pun dan folder mana pun.
+process.chdir(__dirname);
 const path = require('path');
 
 const results = [];

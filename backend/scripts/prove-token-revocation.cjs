@@ -16,7 +16,7 @@
  *
  *_DB: MariaDB lokal, bukan produksi._
  */
-process.chdir('C:\\Users\\AcerAG14\\Documents\\Project\\menfs\\backend');
+process.chdir(require('path').join(__dirname, '..'));
 
 const { PrismaClient } = require('@prisma/client');
 

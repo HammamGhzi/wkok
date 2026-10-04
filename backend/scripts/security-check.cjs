@@ -97,6 +97,44 @@ const check = (name, secure, extra = '') => {
     },
   });
 
+  /**
+   * Tunggu sampai sebuah kondisi benar, bukan menebak lamanya.
+   *
+   * Handler callback Telegram itu async dan tidak di-await oleh route webhook:
+   * route-nya sudah res.sendStatus(200) selagi handler masih bekerja di
+   * belakang. Setelah itu handler baru melakukan DUA query database berurutan.
+   * Dulu script ini menunggu 500 ms tetap. Itu cukup kalau database kebetulan
+   * dekat, tapi tidak cukup saat query lewat pooler internet ke Supabase.
+   * Gejalanya menyesatkan: approve yang seharusnya berhasil dilaporkan gagal,
+   * padahal aplikasinya benar.
+   *
+   * Polling setiap 100 ms menghapus tebakan itu. Batas waktu juga jadi
+   * eksplisit di satu tempat, bukan tersembunyi di setiap angka sleep.
+   *
+   * @param {() => Promise<boolean>} kondisi
+   * @param {number} batasMs
+   * @returns {Promise<boolean>} true kalau kondisi tercapai tepat waktu
+   */
+  const tungguSampai = async (kondisi, batasMs = 15000) => {
+    const mulai = Date.now();
+    for (;;) {
+      if (await kondisi()) return true;
+      if (Date.now() - mulai > batasMs) return false;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  };
+
+  const statusVictim = async () =>
+    (await prisma.menfes.findUnique({ where: { id: victim.id } })).status;
+
+  const tungguGagalDitolak = async () => {
+    // Untuk kasus negatif kita justru HARUS menunggu cukup lama: supaya "tidak
+    // terjadi" berarti memang tidak terjadi, bukan cuma belum terjadi. Pakai batas
+    // waktu yang sama dengan kasus positif, biar tidak ada dua standar.
+    await new Promise((r) => setTimeout(r, 3000));
+    return statusVictim();
+  };
+
   // ═══ 1. Webhook Telegram wajib punya secret ═══════════════════════════
   console.log('\n── 1. Webhook Telegram ──');
 
@@ -105,10 +143,9 @@ const check = (name, secure, extra = '') => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(forgeCallback(`approve_${victim.id}`, 111222333, 1, 'x')),
   });
-  await new Promise((r) => setTimeout(r, 500)); // tunggu handler selesai
-  const afterNoSecret = await prisma.menfes.findUnique({ where: { id: victim.id } });
-  check('POST webhook tanpa secret DITOLAK', afterNoSecret.status === 'PENDING',
-    `HTTP ${rNoSecret.status}, status=${afterNoSecret.status}`);
+  const setelahTanpaSecret = await tungguGagalDitolak();
+  check('POST webhook tanpa secret DITOLAK', setelahTanpaSecret === 'PENDING',
+    `HTTP ${rNoSecret.status}, status=${setelahTanpaSecret}`);
 
   const rBadSecret = await fetch(`${base}/api/telegram/webhook`, {
     method: 'POST',
@@ -118,9 +155,8 @@ const check = (name, secure, extra = '') => {
     },
     body: JSON.stringify(forgeCallback(`approve_${victim.id}`, 111222333, 2, 'x')),
   });
-  await new Promise((r) => setTimeout(r, 500));
-  const afterBadSecret = await prisma.menfes.findUnique({ where: { id: victim.id } });
-  check('POST webhook dengan secret SALAH ditolak', afterBadSecret.status === 'PENDING',
+  const setelahSecretSalah = await tungguGagalDitolak();
+  check('POST webhook dengan secret SALAH ditolak', setelahSecretSalah === 'PENDING',
     `HTTP ${rBadSecret.status}`);
 
   const rOkSecret = await fetch(`${base}/api/telegram/webhook`, {
@@ -131,10 +167,10 @@ const check = (name, secure, extra = '') => {
     },
     body: JSON.stringify(forgeCallback(`approve_${victim.id}`, 111222333, 3, 'notifikasi asli')),
   });
-  await new Promise((r) => setTimeout(r, 500));
-  const afterOkSecret = await prisma.menfes.findUnique({ where: { id: victim.id } });
+  await tungguSampai(async () => (await statusVictim()) === 'APPROVED');
+  const setelahSecretBenar = await statusVictim();
   check('POST webhook dengan secret BENAR tetap berfungsi',
-    afterOkSecret.status === 'APPROVED', `HTTP ${rOkSecret.status}, status=${afterOkSecret.status}`);
+    setelahSecretBenar === 'APPROVED', `HTTP ${rOkSecret.status}, status=${setelahSecretBenar}`);
 
   // bot tidak boleh menulis ke chat_id asing milik-siapa pun
   botCalls.length = 0;
@@ -146,7 +182,10 @@ const check = (name, secure, extra = '') => {
     },
     body: JSON.stringify(forgeCallback('reject_tidak-ada', 777000999, 9, ' INJEKSI ')),
   });
-  await new Promise((r) => setTimeout(r, 500));
+  // Tunggu bot benar-benar selesai memproses, bukan hanya sempat menerima. Kalau
+  // tidak, botCalls masih kosong karena handler belum jalan, dan pemeriksaan ini
+  // lulus karena alasan yang salah.
+  await new Promise((r) => setTimeout(r, 3000));
   check('Bot tidak menulis ke chat_id di luar ADMIN_CHAT_ID',
     !botCalls.some((c) => c.chat_id && c.chat_id !== 111222333),
     `chat_id target: ${botCalls.map((c) => c.chat_id).join(',') || 'tidak ada'}`);
