@@ -21,7 +21,9 @@
     "test:auth-cache": "node test-auth-cache.cjs",
     "test:perf": "node test-perf-cache.cjs",
     "test:admin-perf": "node test-admin-perf.cjs",
-    "test:all": "npm run security-check && npm run test:audit && npm run test:password-length && npm run test:revocation && npm run test:auth-cache && npm run test:perf && npm run test:admin-perf",
+    "test:ig": "node test-instagram-api.cjs",
+    "test:ig-live": "node scripts/test-ig-publish.cjs",
+    "test:all": "npm run security-check && npm run test:audit && npm run test:password-length && npm run test:revocation && npm run test:auth-cache && npm run test:perf && npm run test:admin-perf && npm run test:ig",
     "prove:bcrypt-truncation": "node scripts/prove-bcrypt-truncation.cjs",
     "prove:token-revocation": "node scripts/prove-token-revocation.cjs",
     "sec:forensics": "node sec-forensics.mjs"
