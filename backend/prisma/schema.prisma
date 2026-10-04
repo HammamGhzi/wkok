@@ -27,6 +27,27 @@ model Menfes {
   approvedAt DateTime?
   ipHash     String?
 
+  // ── Publikasi ke Instagram ────────────────────────────────────────────────
+  // Semua nullable dan semua opsional: menfes yang sudah ada di database tidak
+  // pernah menyentuhnya, dan menfes yang belum diposting indistinguishable dari
+  // menfes biasa. Kolom ini sengaja terpisah dari `status` di atas, karena
+  // `status` mewakili keputusan editorial (tampil atau tidak di web) sedangkan
+  // igStatus mewakili perkembangan teknis di luar aplikasi.
+  //
+  // igStatus: NULL (belum pernah diposting) | PENDING (sedang berjalan) |
+  //           PUBLISHED | FAILED
+  // Sengaja tanpa nilai bawaan: menambahkan DEFAULT berarti menulis nilai itu
+  // ke 444 baris yang sudah ada, dan tabel seukuran itu tidak perlu dibuka
+  // ulang. NULL sudah cukup untuksayapembeda "belum pernah" dari "sudah".
+  igStatus     String?
+  igMediaId    String?
+  igPermalink  String?
+  igCaption    String?
+  igImageUrl   String?
+  igError      String?
+  igPublishedAt DateTime?
+
   @@index([status])
   @@index([createdAt])
+  @@index([igStatus])
 }
