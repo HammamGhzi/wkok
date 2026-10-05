@@ -293,6 +293,32 @@ async function publishContainer(creationId) {
 }
 
 /**
+ * Cek status container media.
+ *
+ * Instagram memproses container secara asinkron, terutama kalau ada caption.
+ * Publish dipanggil terlalu cepat akan gagal dengan error "media belum siap".
+ *
+ * @param {string} creationId
+ * @returns {Promise<string>} status_code: 'FINISHED' | 'IN_PROGRESS' | 'ERROR'
+ */
+async function getContainerStatus(creationId) {
+  const { token } = kredensial();
+
+  if (!creationId) {
+    throw new InstagramApiError('creationId wajib diisi.', { raw: 'missing creationId' });
+  }
+
+  const body = await call(
+    `${creationId}`,
+    { fields: 'status_code' },
+    'GET',
+    token
+  );
+
+  return body?.status_code || 'UNKNOWN';
+}
+
+/**
  * Apakah kredensial sudah terisi. Dipakai health check tanpa melempar error.
  *
  * @returns {boolean}
@@ -307,6 +333,7 @@ module.exports = {
   getMe,
   createImageContainer,
   publishContainer,
+  getContainerStatus,
   isConfigured,
   VERSION,
   BATAS_CAPTION,

@@ -179,6 +179,40 @@ async function ambilStatus(menfesId) {
 }
 
 /**
+ * Tunggu container selesai diproses oleh Instagram.
+ *
+ * Instagram memproses container secara asinkron, terutama kalau ada caption.
+ * Publish dipanggil terlalu cepat akan gagal dengan error "media belum siap".
+ * Fungsi ini polling status setiap beberapa detik sampai FINISHED.
+ *
+ * @param {string} creationId
+ * @param {number} timeoutMs maksimum waktu tunggu (default 60 detik)
+ * @param {number} intervalMs interval polling (default 5 detik)
+ * @returns {Promise<string>} status akhir container
+ * @throws {Error} kalau timeout atau status ERROR
+ */
+async function tungguContainerSelesai(creationId, timeoutMs = 60000, intervalMs = 5000) {
+  const batas = Date.now() + timeoutMs;
+
+  while (Date.now() < batas) {
+    const status = await ig.getContainerStatus(creationId);
+
+    if (status === 'FINISHED') {
+      return status;
+    }
+
+    if (status === 'ERROR') {
+      throw new Error('Instagram gagal memproses container. Coba lagi atau cek format gambar.');
+    }
+
+    // IN_PROGRESS atau status lain, tunggu sebentar lalu cek lagi
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error(`Timeout: container belum selesai dalam ${timeoutMs / 1000} detik.`);
+}
+
+/**
  * Publikasikan satu menfes ke Instagram.
  *
  * Fungsi ini menolak kalau menfes sudah pernah tayang. Panggilan ulang setelah
@@ -245,6 +279,16 @@ async function terbitkan({ menfesId, imageBuffer, mimeType, caption }) {
       imageUrl: tersimpan.url,
       caption: teks,
     });
+
+    // Tunggu container selesai diproses sebelum publish. Tanpa caption,
+    // Instagram biasanya selesai dalam hitungan detik. Dengan caption,
+    // bisa memakan waktu lebih lama karena Instagram perlu memproses teksnya.
+    // Publish dipanggil sebelum FINISHED akan gagal dengan error "media belum siap".
+    tahap = 'tunggu_container';
+    const status = await tungguContainerSelesai(creationId);
+    if (status !== 'FINISHED') {
+      throw new Error(`Container tidak selesai diproses (status: ${status}).`);
+    }
 
     tahap = 'media_publish';
     const hasil = await ig.publishContainer(creationId);
