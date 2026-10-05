@@ -183,18 +183,30 @@ async function ambilStatus(menfesId) {
  *
  * Instagram memproses container secara asinkron, terutama kalau ada caption.
  * Publish dipanggil terlalu cepat akan gagal dengan error "media belum siap".
- * Fungsi ini polling status setiap beberapa detik sampai FINISHED.
+ * Fungsi ini polling status setiap 2 detik sampai FINISHED.
  *
  * @param {string} creationId
- * @param {number} timeoutMs maksimum waktu tunggu (default 60 detik)
- * @param {number} intervalMs interval polling (default 5 detik)
+ * @param {number} timeoutMs maksimum waktu tunggu (default 30 detik)
+ * @param {number} intervalMs interval polling (default 2 detik)
  * @returns {Promise<string>} status akhir container
  * @throws {Error} kalau timeout atau status ERROR
  */
-async function tungguContainerSelesai(creationId, timeoutMs = 60000, intervalMs = 5000) {
+async function tungguContainerSelesai(creationId, timeoutMs = 30000, intervalMs = 2000) {
   const batas = Date.now() + timeoutMs;
 
+  // Cek pertama kali langsung, tanpa tunggu. Kalau container sudah FINISHED
+  // (biasanya terjadi untuk gambar tanpa caption), tidak perlu polling sama
+  // sekali.
+  const statusPertama = await ig.getContainerStatus(creationId);
+  if (statusPertama === 'FINISHED') return statusPertama;
+  if (statusPertama === 'ERROR') {
+    throw new Error('Instagram gagal memproses container. Coba lagi atau cek format gambar.');
+  }
+
+  // Polling: cek setiap intervalMs sampai selesai atau timeout.
   while (Date.now() < batas) {
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+
     const status = await ig.getContainerStatus(creationId);
 
     if (status === 'FINISHED') {
@@ -204,9 +216,6 @@ async function tungguContainerSelesai(creationId, timeoutMs = 60000, intervalMs 
     if (status === 'ERROR') {
       throw new Error('Instagram gagal memproses container. Coba lagi atau cek format gambar.');
     }
-
-    // IN_PROGRESS atau status lain, tunggu sebentar lalu cek lagi
-    await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
 
   throw new Error(`Timeout: container belum selesai dalam ${timeoutMs / 1000} detik.`);
