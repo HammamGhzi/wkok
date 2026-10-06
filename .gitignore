@@ -48,3 +48,7 @@ graphify-out/
 backend/perf-probe.mjs
 backend/perf-discriminate.mjs
 backend/ukur-satu-kondisi.cjs
+
+# Hasil test & screenshot verifikasi lokal — alat bukti kerja, bukan bagian aplikasi.
+backend/test-results.txt
+frontend/*-verification.png
