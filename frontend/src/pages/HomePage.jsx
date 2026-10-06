@@ -1,11 +1,126 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { menfesAPI } from '../api';
+import { menfesAPI, siteAPI } from '../api';
 import { TEMPLATES, getTemplateById } from '../config/templates';
 import TemplatePreview from '../components/TemplatePreview';
 
 const MAX_CHARS = 500;
 const MAX_NAME = 30;
+
+// Header dan footer dipakai dua kali: halaman normal dan layar tutup.
+// Dipisah jadi komponen supaya tampilan keduanya identik tanpa menyalin
+// markup — layar tutup harus terlihat sebagai halaman yang sama, bukan
+// halaman error yang asing.
+function HeaderAtas({ darkMode, setDarkMode }) {
+  return (
+    <header className="bg-white/95 dark:bg-ink-900/95 backdrop-blur-sm border-b border-parchment-300 dark:border-ink-600 sticky top-0 z-10">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <img src="/template/logo.jpg" alt="Logo" className="w-7 h-7 rounded-full border border-parchment-300 dark:border-ink-500 object-cover" />
+          <h1 className="text-lg sm:text-xl font-extrabold tracking-tight leading-none">
+            <span className="text-ink-900 dark:text-parchment-200">HARKAT</span>{' '}
+            <span className="text-brand-600 relative">
+              NEKATT
+              <span className="absolute -bottom-0.5 left-0 right-0 h-[2px] bg-brand-700 rounded-full" />
+            </span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setDarkMode(v => !v)}
+            className="flex items-center gap-1.5 text-[11px] font-mono text-ink-500 dark:text-ink-200 bg-parchment-100 dark:bg-ink-800 border border-parchment-300 dark:border-ink-400 px-2.5 py-1 rounded-full"
+          >
+            {darkMode ? 'Light' : 'Dark'}
+          </button>
+          <span className="text-[11px] font-mono text-ink-500 dark:text-ink-200 bg-parchment-100 dark:bg-ink-800 border border-parchment-300 dark:border-ink-400 px-2.5 py-1 rounded-full">
+            Menfess Kampus
+          </span>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function FooterBawah() {
+  return (
+    <footer className="text-center py-6 sm:py-8 border-t border-parchment-300 dark:border-ink-700">
+      <div className="w-16 h-0.5 bg-brand-700 mx-auto mb-4 rounded-full" />
+      <p className="text-xs font-mono tracking-widest text-ink-500 dark:text-ink-200">
+        © 2026{' '}
+        <span className="font-semibold text-brand-400">HARKAT NEKATT</span>
+        {' · EST. 2026'}
+      </p>
+    </footer>
+  );
+}
+
+// Layar yang menutupi seluruh halaman saat menfess tutup.
+//
+// Sifatnya "tidak bisa ditembus" dengan cara yang paling sederhana: FORM
+// TIDAK DIRENDER sama sekali. Bukan overlay di atas form — overlay masih
+// bisa disingkirkan oleh siapa pun yang tahu sedikit CSS/devtools, sedangkan
+// elemen yang tidak pernah dibuat tidak bisa diaktifkan kembali. Pengaman
+// kedua tetap ada di server (submit dibalas 403), jadi menyiasati lewat API
+// langsung pun tetap mentok.
+function LayarTutup({ darkMode, setDarkMode, jamBuka }) {
+  return (
+    <div className="min-h-screen bg-parchment-100 dark:bg-ink-800 flex flex-col">
+      <HeaderAtas darkMode={darkMode} setDarkMode={setDarkMode} />
+
+      <main className="flex-1 flex items-center justify-center px-4 sm:px-6 py-10">
+        <div className="w-full max-w-md text-center space-y-6 sm:space-y-7">
+          {/* Kunci */}
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-parchment-200 dark:bg-ink-700 border border-parchment-400 dark:border-ink-600 flex items-center justify-center shadow-sm">
+            <svg className="w-8 h-8 text-brand-600 dark:text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-ink-500 dark:text-parchment-500 font-mono text-[10px] tracking-[0.25em] uppercase">
+              Bentar ya, lagi tutup dulu
+            </p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+              <span className="text-ink-900 dark:text-parchment-100">MENFESS SEDANG </span>
+              <span className="text-brand-600">TUTUP</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-ink-700 dark:text-parchment-300 max-w-xs mx-auto">
+              Pengiriman menfess dibuka pada jam-jam di bawah ini. Tulis dulu idenya, kirim nanti pas buka!
+            </p>
+          </div>
+
+          {/* Jadwal jam buka */}
+          <ul className="space-y-2 text-left">
+            {(jamBuka?.length ? jamBuka : ['08.00 – 10.00', '12.00 – 14.00', '18.00 – 21.00']).map((jam) => (
+              <li
+                key={jam}
+                className="flex items-center justify-between bg-white/70 dark:bg-ink-900/70 border border-parchment-300 dark:border-ink-600 rounded-xl px-4 py-3"
+              >
+                <span className="flex items-center gap-2.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-600" />
+                  <span className="text-[11px] font-mono uppercase tracking-widest text-ink-500 dark:text-parchment-400">
+                    Jam buka
+                  </span>
+                </span>
+                <span className="text-sm font-mono font-bold text-ink-900 dark:text-parchment-100">
+                  {jam}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <p className="text-[11px] text-ink-500 dark:text-ink-300 font-mono leading-relaxed">
+            Halaman ini mengecek status otomatis — begitu dibuka lagi,
+            formulirnya langsung muncul tanpa perlu reload.
+          </p>
+        </div>
+      </main>
+
+      <FooterBawah />
+    </div>
+  );
+}
 
 export default function HomePage() {
   const [message, setMessage] = useState('');
@@ -18,6 +133,10 @@ export default function HomePage() {
   const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState('Template 1');
   const [step, setStep] = useState(1);
   const [darkMode, setDarkMode] = useState(false);
+  // null = status belum diketahui (masih dicek / gagal jaringan).
+  // Selama null halaman tampil normal; server tetap penutup terakhir karena
+  // submit yang ditutup dibalas 403 apa pun yang terjadi di sini.
+  const [situs, setSitus] = useState(null);
 
   const selectedTemplate = getTemplateById(selectedTemplateId);
   const remaining = MAX_CHARS - message.length;
@@ -29,6 +148,30 @@ export default function HomePage() {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  // Cek status buka/tutup saat mount, lalu tiap 60 detik — supaya admin yang
+  // menekan toggle membuat layar tutup muncul (atau hilang) di halaman yang
+  // sedang terbuka, tanpa user perlu reload.
+  useEffect(() => {
+    let hidup = true;
+    async function cekStatus() {
+      try {
+        const res = await siteAPI.getStatus();
+        if (hidup) setSitus(res.data);
+      } catch {
+        // Gagal menghubungi server bukan alasan menutup halaman: biarkan
+        // tampil normal. Kalau memang sedang tutup, server tetap menolak
+        // submit — di sini kita hanya kehilangan layar tutupnya.
+        if (hidup) setSitus((s) => s ?? { open: true, jamBuka: [] });
+      }
+    }
+    cekStatus();
+    const timer = setInterval(cekStatus, 60000);
+    return () => {
+      hidup = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -78,35 +221,22 @@ export default function HomePage() {
     3: 'Tampil Sebagai',
   };
 
+  // Menfess tutup -> ganti SELURUH halaman dengan layar tutup (lihat
+  // catatan LayarTutup: form tidak dirender sama sekali, bukan ditimpa).
+  if (situs && situs.open === false) {
+    return (
+      <LayarTutup
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        jamBuka={situs.jamBuka}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-parchment-100 dark:bg-ink-800">
       {/* Header */}
-      <header className="bg-white/95 dark:bg-ink-900/95 backdrop-blur-sm border-b border-parchment-300 dark:border-ink-600 sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <img src="/template/logo.jpg" alt="Logo" className="w-7 h-7 rounded-full border border-parchment-300 dark:border-ink-500 object-cover" />
-            <h1 className="text-lg sm:text-xl font-extrabold tracking-tight leading-none">
-              <span className="text-ink-900 dark:text-parchment-200">HARKAT</span>{' '}
-              <span className="text-brand-600 relative">
-                NEKATT
-                <span className="absolute -bottom-0.5 left-0 right-0 h-[2px] bg-brand-700 rounded-full" />
-              </span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDarkMode(v => !v)}
-              className="flex items-center gap-1.5 text-[11px] font-mono text-ink-500 dark:text-ink-200 bg-parchment-100 dark:bg-ink-800 border border-parchment-300 dark:border-ink-400 px-2.5 py-1 rounded-full"
-            >
-              {darkMode ? 'Light' : 'Dark'}
-            </button>
-            <span className="text-[11px] font-mono text-ink-500 dark:text-ink-200 bg-parchment-100 dark:bg-ink-800 border border-parchment-300 dark:border-ink-400 px-2.5 py-1 rounded-full">
-              Menfess Kampus
-            </span>
-          </div>
-        </div>
-      </header>
+      <HeaderAtas darkMode={darkMode} setDarkMode={setDarkMode} />
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
         {/* Hero */}
@@ -406,14 +536,7 @@ export default function HomePage() {
 
       </main>
 
-      <footer className="text-center py-6 sm:py-8 border-t border-parchment-300 dark:border-ink-700">
-        <div className="w-16 h-0.5 bg-brand-700 mx-auto mb-4 rounded-full" />
-        <p className="text-xs font-mono tracking-widest text-ink-500 dark:text-ink-200">
-          © 2026{' '}
-          <span className="font-semibold text-brand-400">HARKAT NEKATT</span>
-          {' · EST. 2026'}
-        </p>
-      </footer>
+      <FooterBawah />
     </div>
   );
 }

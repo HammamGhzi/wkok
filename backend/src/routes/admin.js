@@ -9,6 +9,7 @@ const {
   postMenfesToInstagram,
   retryMenfes,
 } = require('../controllers/adminController');
+const { setSiteOpen } = require('../controllers/siteController');
 
 const router = express.Router();
 
@@ -65,6 +66,9 @@ router.use(authMiddleware);
 
 // GET /api/admin/stats — Statistik dashboard
 router.get('/stats', getStats);
+
+// PATCH /api/admin/site — Buka/tutup menfess untuk publik
+router.patch('/site', setSiteOpen);
 
 // GET /api/admin/menfes — Ambil semua menfes (dengan filter status)
 router.get('/menfes', getAllMenfes);

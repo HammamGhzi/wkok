@@ -27,6 +27,12 @@ export const menfesAPI = {
     api.get('/menfes', { params: { page, limit } }),
 };
 
+// ─── Status buka/tutup situs ──────────────────────────────────────────────
+export const siteAPI = {
+  getStatus: () =>
+    api.get('/site/status'),
+};
+
 // ─── Admin ────────────────────────────────────────────────────────────────
 export const adminAPI = {
   getStats: () =>
@@ -43,6 +49,12 @@ export const adminAPI = {
 
   delete: (id) =>
     api.delete(`/admin/menfes/${id}`),
+
+  // Buka/tutup menfess untuk publik. Menulis baris SiteSetting di database,
+  // jadi perubahannya langsung terbaca semua orang tanpa instance lain
+  // perlu di-restart.
+  setSiteOpen: (open) =>
+    api.patch('/admin/site', { open }),
 
   // Publikasikan gambar + caption ke Instagram.
   //

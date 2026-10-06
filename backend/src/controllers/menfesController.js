@@ -3,6 +3,7 @@ const { notifyNewMenfes } = require('../services/telegramBot');
 const prisma = require('../lib/prisma');
 const cache = require('../lib/menfesCache');
 const { parsePaging } = require('../lib/paging');
+const { statusBuka, JAM_BUKA } = require('./siteController');
 
 /**
  * Hash IP address untuk anti-spam tanpa menyimpan IP asli
@@ -18,6 +19,16 @@ function hashIp(ip) {
  */
 async function submitMenfes(req, res) {
   try {
+    // Guard paling depan, sebelum validasi payload: menfess tutup berarti
+    // tolak semua, tidak peduli isinya. Inilah yang membuat layar tutup di
+    // halaman user tidak bisa ditembus — menyiasati overlay lewat API langsung
+    // tetap kena 403 dengan pesan jadwal yang sama.
+    if (!(await statusBuka())) {
+      return res.status(403).json({
+        error: `Menfess sedang tutup. Jam buka: ${JAM_BUKA.join(', ')}.`,
+      });
+    }
+
     const { message, senderName, senderInfo } = req.body;
 
     // Validasi pesan

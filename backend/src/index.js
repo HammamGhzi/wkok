@@ -8,6 +8,7 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const menfesRoutes = require('./routes/menfes');
 const adminRoutes = require('./routes/admin');
+const siteRoutes = require('./routes/site');
 const authMiddleware = require('./middleware/auth');
 const { router: telegramRouter, registerTelegramCallbacks } = require('./routes/telegram');
 const { initBot } = require('./services/telegramBot');
@@ -103,6 +104,7 @@ app.use(globalLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/menfes', menfesRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/site', siteRoutes);
 app.use('/api/telegram', telegramRouter);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────

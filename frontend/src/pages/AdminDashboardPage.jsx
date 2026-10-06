@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
-import { adminAPI } from '../api';
+import { adminAPI, siteAPI } from '../api';
 import ExportModal from '../components/ExportModal';
 import { TEMPLATES, parseTemplateFromMenfes, getTemplateById } from '../config/templates';
 import { clampPage, paginationItems } from '../utils/pagination.js';
@@ -54,6 +54,8 @@ export default function AdminDashboardPage() {
   const [hoveredId, setHoveredId] = useState(null); // Untuk keyboard shortcuts
   const [selectedIds, setSelectedIds] = useState(new Set()); // Untuk bulk action
   const [bulkMode, setBulkMode] = useState(false); // Toggle mode bulk action
+  const [situs, setSitus] = useState(null); // Status buka/tutup menfess (null = belum tahu)
+  const [toggleSitus, setToggleSitus] = useState(false); // Sedang menulis status
 
   // Penjaga urutan permintaan. Klik tab berturut-turut bisa membuat respons
   // lama tiba setelah respons baru; hanya respons dari permintaan terakhir
@@ -92,6 +94,42 @@ export default function AdminDashboardPage() {
   }, [activeTab, page]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Baca status buka/tutup sekali saat mount. Gagal membaca tidak perlu
+  // ditampilkan — tombolnya memang sengaja disabled selama status belum tahu,
+  // supaya admin tidak menekan toggle tanpa tahu posisi sakelarnya sekarang.
+  useEffect(() => {
+    siteAPI.getStatus()
+      .then((res) => setSitus(res.data))
+      .catch(() => {});
+  }, []);
+
+  // Toggle buka/tutup menfess untuk publik.
+  //
+  // Ditulis optimis: tampilan berubah duluan, request menyusul. Admin menekan
+  // tombol kecil dengan harapan hasil langsung terlihat — kalau ternyata gagal,
+  // tampilan dikembalikan dan pesan error muncul, jadi tidak pernah ada
+  // indikator hijau yang berbohong tanpa penjelasan.
+  async function handleToggleSitus() {
+    if (!situs || toggleSitus) return;
+    const buka = !situs.open;
+    const sebelum = situs;
+    setSitus({ ...situs, open: buka });
+    setToggleSitus(true);
+    try {
+      await adminAPI.setSiteOpen(buka);
+      toast.success(
+        buka
+          ? 'Menfess DIBUKA — publik bisa mengirim lagi.'
+          : 'Menfess DITUTUP — publik melihat layar tutup.'
+      );
+    } catch (err) {
+      setSitus(sebelum);
+      toast.error(err.response?.data?.error || 'Gagal mengubah status menfess.');
+    } finally {
+      setToggleSitus(false);
+    }
+  }
 
   // Keyboard shortcuts (aksi pada card yang sedang di-hover/terakhir di-touch)
   useEffect(() => {
@@ -200,6 +238,37 @@ export default function AdminDashboardPage() {
 
           {/* Right */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* Sakelar buka/tutup menfess — posisi sakelar inilah yang
+                dilihat publik lewat GET /api/site/status. Label = kondisi
+                SAAT INI, bukan aksi, supaya tidak ambigu saat dibaca cepat. */}
+            <button
+              type="button"
+              onClick={handleToggleSitus}
+              disabled={!situs || toggleSitus}
+              aria-pressed={situs ? !situs.open : undefined}
+              title={
+                !situs
+                  ? 'Status belum dimuat'
+                  : situs.open
+                    ? 'Klik untuk menutup menfess bagi publik'
+                    : 'Klik untuk membuka menfess bagi publik'
+              }
+              className={`flex items-center gap-1.5 text-xs font-mono font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors ${
+                !situs
+                  ? 'text-ink-400 border-ink-700 opacity-60 cursor-wait'
+                  : situs.open
+                    ? 'text-emerald-300 border-emerald-800/60 bg-emerald-950/40 hover:border-emerald-600 hover:text-emerald-200'
+                    : 'text-red-300 border-red-800/60 bg-red-950/40 hover:border-red-600 hover:text-red-200'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  !situs ? 'bg-ink-500' : situs.open ? 'bg-emerald-500' : 'bg-red-500'
+                }`}
+              />
+              {situs ? (situs.open ? 'BUKA' : 'TUTUP') : '…'}
+            </button>
+
             {/* Username — sembunyikan di hp sangat kecil */}
             <div className="hidden sm:flex items-center gap-2 bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
