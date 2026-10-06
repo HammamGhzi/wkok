@@ -111,8 +111,8 @@ function LayarTutup({ darkMode, setDarkMode, jamBuka }) {
           </ul>
 
           <p className="text-[11px] text-ink-500 dark:text-ink-300 font-mono leading-relaxed">
-            Halaman ini mengecek status otomatis — begitu dibuka lagi,
-            formulirnya langsung muncul tanpa perlu reload.
+            Makasih udah mampir dan sabar nunggu — kamu keren abis. Sampai
+            ketemu lagi pas jam buka!
           </p>
         </div>
       </main>
