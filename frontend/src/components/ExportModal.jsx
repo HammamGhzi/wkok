@@ -34,6 +34,10 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   // Caption diisi dari igCaption supaya menfes yang gagal tayang dan mau dicoba
   // lagi tidak mengharuskan admin mengetik ulang teksnya.
   const [caption, setCaption] = useState(menfes?.igCaption || '');
+  // Teks pesan yang dibakar ke gambar. Dipisah dari menfes.message supaya
+  // admin boleh merapikan teks untuk export tanpa menimpa menfess asli di
+  // database — edit ini hidup selama modal terbuka, tutup modal = hilang.
+  const [pesan, setPesan] = useState(menfes?.message || '');
   const [posting, setPosting] = useState(false);
   const [bgStatus, setBgStatus] = useState('loading');
   const [posX, setPosX] = useState(currentTemplate.defaultSender.posX);
@@ -69,6 +73,17 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   const MIN_CTRL_H = 200;
   // Tinggi strip preview ketika mobile dalam mode compact.
   const COMPACT_H = 140;
+
+  // Escape = tutup modal. Pelengkap tombol X: di desktop admin sering
+  // langsung tekan Escape, dan kalau tombol X sempat tersembunyi di layar
+  // yang sempit, selalu ada jalan keluar lain.
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   // Switch template dan terapkan preset default template tersebut
   function handleSelectTemplate(tmplId) {
@@ -108,7 +123,7 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
       renderMenfessToCanvas(canvas, {
         template: currentTemplate,
         ratio,
-        message: menfes?.message || '',
+        message: pesan,
         senderName: menfes?.senderName || '',
         isAnon: !menfes?.senderName,
         fontSize,
@@ -134,7 +149,7 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
     return () => {
       isMounted = false;
     };
-  }, [selectedTemplateId, ratio, fontSize, fontSizeName, menfes, posX, posY, rotate, msgX, msgY, msgRotate]);
+  }, [selectedTemplateId, ratio, fontSize, fontSizeName, menfes, pesan, posX, posY, rotate, msgX, msgY, msgRotate]);
 
   // Breakpoint listener (desktop vs mobile).
   useEffect(() => {
@@ -185,7 +200,7 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
     renderMenfessToCanvas(canvas, {
       template: currentTemplate,
       ratio,
-      message: menfes?.message || '',
+      message: pesan,
       senderName: menfes?.senderName || '',
       isAnon: !menfes?.senderName,
       fontSize,
@@ -299,13 +314,18 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/85 backdrop-blur-md p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/85 backdrop-blur-md pt-10 sm:p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       {/* Sheet dari bawah di mobile, dialog tengah di tablet/desktop.
+          Tinggi = h-full terhadap overlay, dengan padding atas 40px yang
+          menyisakan celah untuk tap-to-close. JANGAN pakai vh: di HP,
+          vh mengikuti viewport besar (saat URL bar/keyboard tersembunyi)
+          sehingga sheet jadi lebih tinggi dari layar yang terlihat dan
+          header + tombol close terdorong keluar layar ke atas.
           Height tetap (bukan max-h) + flex column: preview dan footer jadi
           area non-scroll, hanya kolom controls yang scroll. */}
-      <div className="bg-ink-700 border border-ink-600 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-[1280px] h-[92vh] sm:h-[95vh] flex flex-col overflow-hidden">
+      <div className="bg-ink-700 border border-ink-600 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-[1280px] h-full flex flex-col overflow-hidden">
         {/* Handle bar mobile */}
         <div className="flex-none flex justify-center pt-3 pb-1 sm:hidden" aria-hidden="true">
           <div className="w-10 h-1 bg-ink-500 rounded-full" />
@@ -313,18 +333,21 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
 
         {/* Header */}
         <div className="flex-none flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-ink-600">
-          <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="flex items-center gap-2 min-w-0">
+            <svg className="w-4 h-4 text-brand-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <h2 className="font-bold text-sm text-parchment-200 font-mono tracking-widest uppercase">Export ke IG</h2>
+            <h2 className="font-bold text-sm text-parchment-200 font-mono tracking-widest uppercase truncate">Export ke IG</h2>
           </div>
+          {/* 44px (bukan 32px) supaya memenuhi standar target sentuh, dan
+              warna parchment-300 supaya silangnya kontras di atas ink-700 —
+              ink-300 lama terlalu gelap dan lolos pandang di layar HP. */}
           <button
             onClick={onClose}
-            className="text-ink-300 hover:text-parchment-200 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-ink-600 transition-colors touch-manipulation"
+            className="text-parchment-300 hover:text-parchment-100 hover:bg-ink-600 w-11 h-11 shrink-0 -mr-1.5 flex items-center justify-center rounded-lg transition-colors touch-manipulation"
             aria-label="Tutup"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -604,12 +627,37 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
             </p>
           </div>
 
-          {/* Pesan preview */}
+          {/* Pesan yang dibakar ke gambar. Diedit lokal saja: menfess asli di
+              database tidak pernah ditimpa oleh kolom ini. */}
           <div className="bg-ink-800 border border-ink-600 rounded-xl p-3">
-            <p className="text-[10px] font-mono font-bold text-ink-200 mb-1.5 tracking-widest uppercase">Isi Pesan</p>
-            <p className="text-sm text-parchment-300 line-clamp-3 font-mono leading-relaxed break-words">
-              <span className="text-brand-600">"</span>{menfes.message}<span className="text-brand-600">"</span>
-            </p>
+            <div className="flex justify-between items-baseline mb-1.5">
+              <p className="text-[10px] font-mono font-bold text-ink-200 tracking-widest uppercase">Isi Pesan</p>
+              <span
+                className={`text-[10px] font-mono ${
+                  pesan.trim().length < 5 || pesan.trim().length > 500
+                    ? 'text-red-400'
+                    : 'text-ink-200'
+                }`}
+              >
+                {pesan.trim().length}/500
+              </span>
+            </div>
+            <textarea
+              value={pesan}
+              onChange={(e) => setPesan(e.target.value.slice(0, 700))}
+              rows={4}
+              placeholder="Teks yang digambar ke gambar. Minimal 5, maksimal 500 karakter."
+              className="w-full bg-ink-700 border border-ink-600 rounded-lg px-2.5 py-2 text-sm text-parchment-300 font-mono leading-relaxed resize-y focus:border-brand-500 focus:outline-none"
+            />
+            {pesan !== (menfes?.message || '') && (
+              <button
+                type="button"
+                onClick={() => setPesan(menfes?.message || '')}
+                className="mt-1.5 text-[10px] font-mono text-brand-500 hover:text-brand-400 underline underline-offset-2"
+              >
+                Reset ke teks asli
+              </button>
+            )}
           </div>
 
           {/* Caption Instagram */}
@@ -674,7 +722,7 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
           <button
             onClick={handleDownload}
             disabled={sibuk}
-            className="btn-secondary flex-1 font-mono text-sm flex items-center justify-center gap-2 py-3.5 sm:py-3 touch-manipulation"
+            className="btn-secondary flex-1 font-mono text-sm flex items-center justify-center gap-2 py-3.5 sm:py-3 touch-manipulation whitespace-nowrap"
           >
             {downloading ? (
               <>
@@ -705,7 +753,7 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
                   ? 'Menfes ini sudah pernah tayang.'
                   : 'Publikasikan ke Instagram'
             }
-            className="btn-primary flex-1 font-mono text-sm flex items-center justify-center gap-2 py-3.5 sm:py-3 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn-primary flex-1 font-mono text-sm flex items-center justify-center gap-2 py-3.5 sm:py-3 touch-manipulation whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {posting ? (
               <>
