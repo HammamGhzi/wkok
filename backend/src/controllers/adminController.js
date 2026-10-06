@@ -116,15 +116,21 @@ async function getAllMenfes(req, res) {
  * PATCH /api/admin/menfes/:id/approve
  * Approve menfes
  *
- * Hanya menfes PENDING yang bisa diapprove. Jalur Telegram sudah menjaganya
- * (src/routes/telegram.js), jalur dashboard ini tidak, jadi dua klik cepat
- * atau satu klik yang terkirim dua kali akibat pengulangan jaringan akan
- * menulis ulang approvedAt dua kali dan membalas 200 dua kali. Admin tidak
- * pernah melihat tanda bahwa approve pertama sebenarnya sudah berhasil.
+ * PENDING dan REJECTED sama-sama boleh diapprove. Reject lalu approve adalah
+ * koreksi yang sah — sama logikanya dengan approve lalu reject: admin bisa
+ * berubah pikiran, dan menfes REJECTED yang diapprove ulang hanya menulis
+ * status yang memang sudah tidak dipakai lagi.
  *
- * Reject TIDAK memakai syarat yang sama, karena approve lalu reject adalah
- * koreksi yang sah: admin bisa berubah pikiran. Menolak menfes yang sudah
- * REJECTED juga tidak merusak apa pun, hanya menulis nilai yang sama.
+ * Yang ditolak hanya APPROVED -> APPROVED. Dua klik cepat atau satu klik yang
+ * terkirim dua kali akibat pengulangan jaringan akan menulis ulang approvedAt
+ * dua kali dan membalas 200 dua kali, dan admin tidak pernah melihat tanda
+ * bahwa approve pertama sebenarnya sudah berhasil. Dengan menolak yang sudah
+ * APPROVED, klik kedua justru memberi tahu admin bahwa pekerjaannya sudah
+ * selesai.
+ *
+ * Jalur Telegram (src/routes/telegram.js) memakai syarat yang lebih ketat,
+ * hanya PENDING. Itu sengaja: tombol callback bot tidak punya ruang untuk
+ * menampilkan pilihan koreksi, jadi kesalahan tekan di sana lebih mahal.
  */
 async function approveMenfes(req, res) {
   try {
@@ -135,13 +141,8 @@ async function approveMenfes(req, res) {
       return res.status(404).json({ error: 'Menfes tidak ditemukan.' });
     }
 
-    if (menfes.status !== 'PENDING') {
-      return res.status(409).json({
-        error:
-          menfes.status === 'APPROVED'
-            ? 'Menfes ini sudah diapprove sebelumnya.'
-            : `Menfes ini sudah ${menfes.status}, tidak bisa diapprove lagi.`,
-      });
+    if (menfes.status === 'APPROVED') {
+      return res.status(409).json({ error: 'Menfes ini sudah diapprove sebelumnya.' });
     }
 
     const updated = await prisma.menfes.update({
