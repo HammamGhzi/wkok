@@ -5,6 +5,8 @@
 //   1. klaim pakai updateMany bersyarat   -> hanya satu proses boleh jalan
 //   2. simpan gambar ke uploads/ig/       -> nama file dibuat dari id, bukan dari input
 //   3. POST /media                        -> container (belum publik)
+//      ...dengan foto pengirim: anak kartu + anak foto -> induk CAROUSEL,
+//      gagal di tengah jalan -> fallback kartu tunggal + peringatan
 //   4. POST /media_publish                -> tayang di feed
 //   5. tulis hasilnya ke database
 //
@@ -174,7 +176,7 @@ async function klaimKerja(menfesId) {
 async function ambilStatus(menfesId) {
   return prisma.menfes.findUnique({
     where: { id: menfesId },
-    select: { igStatus: true, igMediaId: true, igPermalink: true, status: true },
+    select: { igStatus: true, igMediaId: true, igPermalink: true, status: true, fotoUrl: true },
   });
 }
 
@@ -283,24 +285,85 @@ async function terbitkan({ menfesId, imageBuffer, mimeType, caption }) {
       data: { igImageUrl: tersimpan.url, igCaption: teks || null },
     });
 
-    tahap = 'container';
-    const { creationId } = await ig.createImageContainer({
-      imageUrl: tersimpan.url,
-      caption: teks,
-    });
+    // ── Kartu tunggal ATAU carousel ─────────────────────────────────────────
+    // Foto pengirim (kalau ada) menentukan jalurnya: tanpa foto, perilakunya
+    // persis seperti sebelum fitur ini ada. Dengan foto, post jadi carousel
+    // [kartu, foto] — caption hanya di container induk, dua anak tanpa caption.
+    const urlFoto = ada.fotoUrl ? `${baseUrlPublik()}${ada.fotoUrl}` : null;
+    let peringatan = null;
+    let creationIdFinal;
 
-    // Tunggu container selesai diproses sebelum publish. Tanpa caption,
-    // Instagram biasanya selesai dalam hitungan detik. Dengan caption,
-    // bisa memakan waktu lebih lama karena Instagram perlu memproses teksnya.
-    // Publish dipanggil sebelum FINISHED akan gagal dengan error "media belum siap".
-    tahap = 'tunggu_container';
-    const status = await tungguContainerSelesai(creationId);
-    if (status !== 'FINISHED') {
-      throw new Error(`Container tidak selesai diproses (status: ${status}).`);
+    const tunggu = async (creationId) => {
+      const status = await tungguContainerSelesai(creationId);
+      if (status !== 'FINISHED') {
+        throw new Error(`Container tidak selesai diproses (status: ${status}).`);
+      }
+    };
+
+    if (!urlFoto) {
+      // Jalur lama, tanpa perubahan: satu container ber-caption, satu publish.
+      tahap = 'container';
+      const { creationId } = await ig.createImageContainer({
+        imageUrl: tersimpan.url,
+        caption: teks,
+      });
+      tahap = 'tunggu_container';
+      await tunggu(creationId);
+      creationIdFinal = creationId;
+    } else {
+      // Membangun carousel dulu, baru memilih publish. Seluruh isi blok ini
+      // terjadi SEBELUM media_publish — kalau gagal di mana pun di sini,
+      // belum ada satu pun post yang tayang, jadi fallback ke kartu tunggal
+      // tidak mungkin menghasilkan duplikat.
+      try {
+        tahap = 'container_kartu';
+        const { creationId: anakKartu } = await ig.createImageContainer({
+          imageUrl: tersimpan.url,
+        });
+
+        tahap = 'tunggu_container_kartu';
+        await tunggu(anakKartu);
+
+        tahap = 'container_foto';
+        const { creationId: anakFoto } = await ig.createImageContainer({
+          imageUrl: urlFoto,
+        });
+
+        tahap = 'tunggu_container_foto';
+        await tunggu(anakFoto);
+
+        tahap = 'container_induk';
+        const { creationId: induk } = await ig.createCarouselContainer({
+          children: [anakKartu, anakFoto],
+          caption: teks,
+        });
+
+        tahap = 'tunggu_container_induk';
+        await tunggu(induk);
+        creationIdFinal = induk;
+      } catch (errCarousel) {
+        // Kartu TETAP tayang tanpa foto — admin sudah mengedit caption dan
+        // menunggu, menahan seluruh post hanya karena slide kedua bermasalah
+        // lebih merugikan daripada posting tanpa foto. Kegagalannya tetap
+        // diucapkan terbuka lewat peringatan, bukan ditelan diam-diam.
+        peringatan =
+          `Foto tidak bisa diproses jadi carousel (${errCarousel.message}). ` +
+          'Kartu tayang tanpa foto.';
+        console.warn('IG carousel fallback:', errCarousel.message);
+
+        tahap = 'container_fallback';
+        const { creationId } = await ig.createImageContainer({
+          imageUrl: tersimpan.url,
+          caption: teks,
+        });
+        tahap = 'tunggu_container_fallback';
+        await tunggu(creationId);
+        creationIdFinal = creationId;
+      }
     }
 
     tahap = 'media_publish';
-    const hasil = await ig.publishContainer(creationId);
+    const hasil = await ig.publishContainer(creationIdFinal);
 
     await prisma.menfes.update({
       where: { id: menfesId },
@@ -313,7 +376,12 @@ async function terbitkan({ menfesId, imageBuffer, mimeType, caption }) {
       },
     });
 
-    return { mediaId: hasil.mediaId, permalink: hasil.permalink, imageUrl: tersimpan.url };
+    return {
+      mediaId: hasil.mediaId,
+      permalink: hasil.permalink,
+      imageUrl: tersimpan.url,
+      peringatan,
+    };
   } catch (err) {
     await prisma.menfes.update({
       where: { id: menfesId },

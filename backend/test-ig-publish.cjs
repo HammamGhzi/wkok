@@ -66,6 +66,21 @@ const igStub = {
     if (panjang > 2200) throw new Error(`Caption ${panjang} karakter, batas 2200.`);
     return { creationId: 'CREATION-XYZ' };
   },
+  // FINISHED langsung pada cek pertama: tidak ada polling, tidak ada tidur.
+  getContainerStatus: async (id) => {
+    igCalls.push({ fn: 'getContainerStatus', id });
+    return 'FINISHED';
+  },
+  createCarouselContainer: async (args) => {
+    igCalls.push({ fn: 'createCarouselContainer', args });
+    if (jebakan === 'carousel') throw new Error('carousel ditolak Instagram');
+    if (!Array.isArray(args.children) || args.children.length < 2) {
+      throw new Error('Carousel butuh 2-10 container anak.');
+    }
+    const panjang = (args.caption ?? '').length;
+    if (panjang > 2200) throw new Error(`Caption ${panjang} karakter, batas 2200.`);
+    return { creationId: 'CAROUSEL-INDUK-1' };
+  },
   publishContainer: async (id) => {
     igCalls.push({ fn: 'publishContainer', id });
     if (jebakan === 'publish') throw new Error('publish ditolak Instagram');
@@ -244,6 +259,63 @@ async function main() {
   check('caption dipangkas spasi', simpan?.args.data.igCaption === 'halo dunia', simpan?.args.data.igCaption);
   const kirim = igCalls.find((c) => c.fn === 'createImageContainer');
   check('caption ke container sudah dipangkas', kirim.args.caption === 'halo dunia');
+
+  // ─── 6b. Carousel: ada foto pengirim ───────────────────────────────────────
+  console.log('\n== carousel (foto pengirim) ==');
+  reset();
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED', fotoUrl: '/uploads/foto/foto-uji.png',
+  };
+  const rFoto = await igPublish.terbitkan({
+    menfesId: 'M1',
+    imageBuffer: JPEG,
+    mimeType: 'image/jpeg',
+    caption: '  halo carousel  ',
+  });
+  const anak = igCalls.filter((c) => c.fn === 'createImageContainer');
+  const induk = igCalls.filter((c) => c.fn === 'createCarouselContainer');
+  check('dua container anak dibuat (kartu + foto)', anak.length === 2, String(anak.length));
+  check('anak tanpa caption (caption hanya di induk)',
+    anak.every((c) => c.args.caption === undefined),
+    JSON.stringify(anak.map((c) => c.args.caption)));
+  check('anak pertama kartu, anak kedua foto pengirim',
+    anak[0]?.args.imageUrl.includes('/uploads/ig/') && anak[1]?.args.imageUrl.includes('/uploads/foto/'),
+    `${anak[0]?.args.imageUrl} | ${anak[1]?.args.imageUrl}`);
+  check('container induk CAROUSEL dibuat', induk.length === 1, String(induk.length));
+  check('induk membawa 2 children',
+    induk[0]?.args.children?.length === 2, JSON.stringify(induk[0]?.args.children));
+  check('caption induk dipangkas', induk[0]?.args.caption === 'halo carousel', induk[0]?.args.caption);
+  check('publish memakai creation id induk',
+    igCalls.find((c) => c.fn === 'publishContainer')?.id === 'CAROUSEL-INDUK-1');
+  check('tanpa peringatan kalau carousel lancar', rFoto.peringatan === null, String(rFoto.peringatan));
+  check('igStatus ditulis PUBLISHED', updateTerakhir().igStatus === 'PUBLISHED', updateTerakhir().igStatus);
+
+  // Kegagalan membangun carousel: kartu TETAP tayang tanpa foto, dengan
+  // peringatan terbuka — bukan gagal total dan bukan ditelan diam-diam.
+  console.log('\n== carousel gagal -> fallback kartu tunggal ==');
+  reset();
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED', fotoUrl: '/uploads/foto/foto-uji.png',
+  };
+  jebakan = 'carousel';
+  const rFallback = await igPublish.terbitkan({
+    menfesId: 'M1',
+    imageBuffer: JPEG,
+    mimeType: 'image/jpeg',
+    caption: 'caption tetap utuh',
+  });
+  check('publish tetap terjadi tepat satu kali', jumlahPublish() === 1, String(jumlahPublish()));
+  check('publish memakai container kartu tunggal',
+    igCalls.find((c) => c.fn === 'publishContainer')?.id === 'CREATION-XYZ');
+  const anakFallback = igCalls.filter((c) => c.fn === 'createImageContainer');
+  check('container ketiga dibuat ulang ber-caption (fallback)',
+    anakFallback.length === 3 && anakFallback[2].args.caption === 'caption tetap utuh',
+    JSON.stringify(anakFallback.map((c) => c.args.caption)));
+  check('peringatan menyebut foto gagal',
+    /Foto tidak bisa diproses/.test(rFallback.peringatan || ''), rFallback.peringatan);
+  check('status akhir tetap PUBLISHED', updateTerakhir().igStatus === 'PUBLISHED', updateTerakhir().igStatus);
 
   // ─── 7. Kegagalan di tiap tahap ────────────────────────────────────────────
   console.log('\n== kegagalan ==');

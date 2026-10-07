@@ -62,6 +62,14 @@ model Menfes {
   igError      String?
   igPublishedAt DateTime?
 
+  // ── Foto opsional dari pengirim ────────────────────────────────────────────
+  // Path relatif ('/uploads/foto/<namafile>'), bukan URL absolut: base URL bisa
+  // berubah sedangkan path tetap valid, dan dashboard cukup menempelkannya ke
+  // base API masing-masing. NULL = tanpa foto (post IG jadi kartu tunggal).
+  // Foto TIDAK pernah ikut di response API publik — hanya dashboard dan
+  // jalur publish Instagram yang membacanya.
+  fotoUrl String?
+
   @@index([status])
   @@index([createdAt])
   @@index([igStatus])

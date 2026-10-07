@@ -1,8 +1,9 @@
 // Pembungkus tipis untuk Instagram Graph API.
 //
-// Cakupan file ini sengaja sempit: hanya gambar, hanya feed. Tidak ada reels,
-// tidak ada carousel, tidak ada moderasi komentar. Menambahkannya nanti berarti
-// menambah endpoint dan menambah permukaan yang bisa rusak.
+// Cakupan file ini sengaja sempit: hanya gambar, hanya feed. Tidak ada reels.
+// Carousel hanya untuk kasus "kartu + foto pengirim" — dua gambar, urutan
+// tetap, tanpa opsi lain. Menambahkannya nanti berarti menambah endpoint dan
+// menambah permukaan yang bisa rusak.
 //
 // ── Mengapa host-nya graph.instagram.com ──────────────────────────────────────
 //
@@ -249,6 +250,57 @@ async function createImageContainer({ imageUrl, caption }) {
 }
 
 /**
+ * Rangkai beberapa container anak jadi satu post carousel.
+ *
+ * Urutan anak menentukan urutan slide. Caption ditaruh DI SINI (container
+ * induk), bukan di anak — anak yang dipakai bagian carousel tidak boleh
+ * membawa caption sendiri. Masing-masing anak wajib sudah berstatus
+ * FINISHED sebelum dipanggil, kalau tidak Instagram menolak induknya.
+ *
+ * @param {object} args
+ * @param {string[]} args.children creation id anak, 2-10 entri
+ * @param {string} [args.caption] caption untuk seluruh carousel
+ * @returns {Promise<{creationId: string}>}
+ */
+async function createCarouselContainer({ children, caption }) {
+  const { token, igUserId } = kredensial();
+
+  if (!Array.isArray(children) || children.length < 2 || children.length > 10) {
+    throw new InstagramApiError('Carousel butuh 2-10 container anak.', {
+      raw: `children: ${JSON.stringify(children)}`,
+    });
+  }
+
+  const teks = (caption ?? '').trim();
+  if (teks.length > BATAS_CAPTION) {
+    throw new InstagramApiError(
+      `Caption ${teks.length} karakter, batas Instagram ${BATAS_CAPTION}. ` +
+        'Pendekkan sebelum memposting.',
+      { raw: 'caption too long' }
+    );
+  }
+
+  const body = await call(
+    `${igUserId}/media`,
+    {
+      media_type: 'CAROUSEL',
+      children: children.join(','),
+      caption: teks || undefined,
+    },
+    'POST',
+    token
+  );
+
+  if (!body?.id) {
+    throw new InstagramApiError('Instagram tidak mengembalikan creation id carousel.', {
+      raw: JSON.stringify(body).slice(0, 300),
+    });
+  }
+
+  return { creationId: body.id };
+}
+
+/**
  * Terbitkan container jadi post yang benar-benar muncul di feed.
  *
  * INI LANGKAH YANG BERDAMPAK PUBLIK. Panggilannya tidak idempoten: dua kali
@@ -332,6 +384,7 @@ module.exports = {
   jelaskanKode,
   getMe,
   createImageContainer,
+  createCarouselContainer,
   publishContainer,
   getContainerStatus,
   isConfigured,

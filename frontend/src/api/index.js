@@ -20,12 +20,35 @@ export const authAPI = {
 
 // ─── Menfes Publik ────────────────────────────────────────────────────────
 export const menfesAPI = {
-  submit: (data) =>
-    api.post('/menfes', data),
+  // FormData (submit BERTAMPILAN FOTO) wajib lewat tanpa header JSON default
+  // axios: dengan Content-Type 'application/json', axios v1 mengubah FormData
+  // menjadi objek JSON (formDataToJSON) dan file-nya hilang diam-diam — server
+  // menerima {"foto":{}} tanpa file, lalu tetap membalas 201. Header multipart
+  // eksplisit membuat transformRequest mempertahankan FormData apa adanya;
+  // adapter lalu membuang header itu lagi supaya browser memasang boundary.
+  // Submit tanpa foto tetap JSON biasa, persis seperti sebelumnya.
+  submit: (data, config) => {
+    const berfoto = typeof FormData !== 'undefined' && data instanceof FormData;
+    return api.post('/menfes', data, berfoto
+      ? {
+          ...config,
+          headers: { 'Content-Type': 'multipart/form-data', ...(config?.headers || {}) },
+        }
+      : config);
+  },
 
   getApproved: (page = 1, limit = 10) =>
     api.get('/menfes', { params: { page, limit } }),
 };
+
+// ── URL file statis (foto pengirim) ───────────────────────────────────────
+// Kolom fotoUrl disimpan relatif ('/uploads/foto/...') supaya tahan terhadap
+// perubahan base URL. BASE_URL selalu berujung '/api' — file statis dilayani
+// tanpa prefix itu, jadi '/api' dibuang dulu sebelum path ditempel.
+export function urlAset(relPath) {
+  if (!relPath) return null;
+  return BASE_URL.replace(/\/api$/, '') + relPath;
+}
 
 // ─── Status buka/tutup situs ──────────────────────────────────────────────
 export const siteAPI = {

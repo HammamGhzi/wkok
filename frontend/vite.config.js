@@ -43,6 +43,13 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      // File foto pengirim (uploads/foto) di-backend. Tanpa proxy ini,
+      // <img src="/uploads/..."> di dev jatuh ke SPA fallback dan balik
+      // index.html — gambar rusak tanpa error yang kelihatan.
+      '/uploads': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
     },
   },
 });

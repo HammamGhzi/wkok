@@ -88,6 +88,7 @@ async function main() {
 const HARAP_ADA = [
   'getMe',
   'createImageContainer',
+  'createCarouselContainer',
   'publishContainer',
   'isConfigured',
   'jelaskanKode',
@@ -167,6 +168,37 @@ nextResponse = jsonRes({ id: 'CREATION-2' });
 await ig.createImageContainer({ imageUrl: 'https://x.test/a.jpg', caption: '   ' });
 check('caption kosong tidak terkirim', !calls[0].url.searchParams.has('caption'));
 check('media_type tidak terkirim', !calls[0].url.searchParams.has('media_type'));
+
+// ─── 5b. Carousel (jalur kartu + foto pengirim) ──────────────────────────────
+
+reset();
+e = await grab(() => ig.createCarouselContainer({ children: ['C1'] }));
+check('carousel dengan 1 anak ditolak', e !== null && /2-10/.test(e?.message || ''), e?.message);
+check('children invalid tidak memanggil jaringan', calls.length === 0);
+
+e = await grab(() => ig.createCarouselContainer({ children: 'C1,C2' }));
+check('children bukan array ditolak', e !== null && /2-10/.test(e?.message || ''), e?.message);
+check('children salah jenis tidak memanggil jaringan', calls.length === 0);
+
+reset();
+e = await grab(() => ig.createCarouselContainer({ children: ['C1', 'C2'], caption: panjang }));
+check('caption kelebihan ditolak di carousel', e !== null && /2201 karakter/.test(e?.message || ''), e?.message);
+check('caption kelebihan tidak memanggil jaringan (carousel)', calls.length === 0);
+
+reset();
+nextResponse = jsonRes({ id: 'CAROUSEL-INDUK-1' });
+const karosel = await ig.createCarouselContainer({ children: ['C1', 'C2'], caption: 'halo carousel' });
+check('creation id induk dikembalikan', karosel.creationId === 'CAROUSEL-INDUK-1', karosel.creationId);
+check('endpoint /media dipakai', /\/media$/.test(calls[0].url.pathname), calls[0].url.pathname);
+check('media_type CAROUSEL', calls[0].url.searchParams.get('media_type') === 'CAROUSEL');
+check('children dipisah koma', calls[0].url.searchParams.get('children') === 'C1,C2');
+check('caption terkirim di induk', calls[0].url.searchParams.get('caption') === 'halo carousel');
+check('tepat satu panggilan POST', calls.length === 1 && calls[0].method === 'POST', calls.map(c => c.method).join(','));
+
+reset();
+nextResponse = jsonRes({ id: 'CAROUSEL-INDUK-2' });
+await ig.createCarouselContainer({ children: ['C1', 'C2'], caption: '   ' });
+check('caption kosong tidak terkirim (carousel)', !calls[0].url.searchParams.has('caption'));
 
 // ─── 6. Publish ──────────────────────────────────────────────────────────────
 

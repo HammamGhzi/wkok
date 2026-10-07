@@ -263,6 +263,19 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
 
       const hasil = await adminAPI.postInstagram(menfes.id, fd);
       toast.success('Tayang di Instagram.');
+      // Carousel kadang berakhir "tayang tanpa foto" (foto gagal diproses IG
+      // sebelum container induk jadi). Kartu tetap tayang — tapi admin harus
+      // tahu, bukan mengira semuanya lengkap.
+      if (hasil.data?.peringatan) {
+        toast(hasil.data.peringatan, {
+          icon: (
+            <svg className="w-5 h-5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          ),
+          duration: 10000,
+        });
+      }
       onPosted?.(hasil.data);
     } catch (err) {
       // err.response null berarti gagalnya di jaringan atau timeout, bukan

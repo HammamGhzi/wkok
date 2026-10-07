@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { menfesAPI, siteAPI } from '../api';
 import { TEMPLATES, getTemplateById } from '../config/templates';
@@ -6,6 +6,43 @@ import TemplatePreview from '../components/TemplatePreview';
 
 const MAX_CHARS = 500;
 const MAX_NAME = 30;
+
+// ── Batas foto pengirim ─────────────────────────────────────────────────────
+const UKURAN_FOTO_MAKS = 5 * 1024 * 1024;
+const TIPE_FOTO_OK = ['image/jpeg', 'image/jpg', 'image/png'];
+
+// Re-encode foto lewat canvas SEBELUM preview, supaya byte yang dilihat = byte
+// yang dikirim. Tiga hal terjadi sekaligus di sini: EXIF (termasuk lokasi
+// kamera) hilang karena canvas tidak pernah menyalin metadata; foto dijepit
+// ke sisi terpanjang 1600px; dan hasil JPEG-nya yang dikirim — server cukup
+// menyimpan apa adanya tanpa library pemrosesan gambar sama sekali.
+async function reencodeFoto(file) {
+  const objUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('gambar tidak terbaca'));
+      el.src = objUrl;
+    });
+    const rasio = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * rasio));
+    const h = Math.max(1, Math.round(img.naturalHeight * rasio));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    // Putih dulu di bawah, supaya PNG berlubang tidak jadi kotak hitam.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+    if (!blob) throw new Error('gagal mengubah gambar');
+    return new File([blob], 'foto.jpg', { type: 'image/jpeg' });
+  } finally {
+    URL.revokeObjectURL(objUrl);
+  }
+}
 
 // Header dan footer dipakai dua kali: halaman normal dan layar tutup.
 // Dipisah jadi komponen supaya tampilan keduanya identik tanpa menyalin
@@ -177,6 +214,19 @@ export default function HomePage() {
   const [submitted, setSubmitted] = useState(false);
   const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState('Template 1');
   const [step, setStep] = useState(1);
+  // Foto opsional pengirim. Null = tanpa foto (perilaku persis seperti
+  // sebelum fitur ini ada). Yang disimpan adalah HASIL re-encode, jadi
+  // pratinjau menampilkan byte yang benar-benar akan dikirim.
+  const [foto, setFoto] = useState(null);
+  const fotoPreview = useMemo(
+    () => (foto ? URL.createObjectURL(foto) : null),
+    [foto]
+  );
+  // URL pratinjau lama dibuang saat foto berganti atau dihapus — tanpa ini
+  // object URL menumpuk di memori tiap kali user memilih foto.
+  useEffect(() => () => {
+    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
+  }, [fotoPreview]);
   const [darkMode, setDarkMode] = useState(false);
   // null = status BELUM PERNAH diketahui. Fail-closed: selama null, form TIDAK
   // dirender — cuma layar muat/layar gangguan. Server tetap penutup terakhir
@@ -246,21 +296,53 @@ export default function HomePage() {
 
     setSubmitting(true);
     try {
-      await menfesAPI.submit({
-        message: trimmed,
-        senderName: isAnon ? null : senderName.trim(),
-        senderInfo: selectedTemplate.name,
-      });
+      if (foto) {
+        // FormData: teks + byte foto dalam satu request. Field yang dikirim
+        // identik dengan jalur JSON — bedanya cuma pembungkusnya.
+        const form = new FormData();
+        form.append('message', trimmed);
+        if (!isAnon && senderName.trim()) form.append('senderName', senderName.trim());
+        form.append('senderInfo', selectedTemplate.name);
+        form.append('foto', foto, foto.name);
+        // Foto bisa 5 MB; timeout 10 detik default ketat untuk koneksi lambat.
+        await menfesAPI.submit(form, { timeout: 30000 });
+      } else {
+        await menfesAPI.submit({
+          message: trimmed,
+          senderName: isAnon ? null : senderName.trim(),
+          senderInfo: selectedTemplate.name,
+        });
+      }
       setLastSubmittedTemplate(selectedTemplate.name);
       setSubmitted(true);
       setMessage('');
       setSenderName('');
+      setFoto(null);
       toast.success('Menfess terkirim! Menunggu persetujuan admin.');
     } catch (err) {
       const msg = err.response?.data?.error || 'Gagal mengirim menfes. Coba lagi.';
       toast.error(msg);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleFotoPilih(e) {
+    const pilih = e.target.files?.[0];
+    e.target.value = ''; // kosongkan supaya file yang sama bisa dipilih ulang
+    if (!pilih) return;
+    if (!TIPE_FOTO_OK.includes(pilih.type)) {
+      toast.error('Foto harus JPG atau PNG ya!');
+      return;
+    }
+    if (pilih.size > UKURAN_FOTO_MAKS) {
+      toast.error('Foto maksimal 5 MB!');
+      return;
+    }
+    try {
+      setFoto(await reencodeFoto(pilih));
+    } catch {
+      toast.error('Foto tidak bisa dibaca. Coba gambar lain.');
     }
   }
 
@@ -271,6 +353,7 @@ export default function HomePage() {
     setIsAnon(true);
     setSelectedTemplateId('template1');
     setShowPreview(true);
+    setFoto(null);
     setStep(1);
   }
 
@@ -278,6 +361,7 @@ export default function HomePage() {
     1: 'Pilih Template',
     2: 'Isi Pesan',
     3: 'Tampil Sebagai',
+    4: 'Foto — Opsional',
   };
 
   // Fail-closed: form hanya tampil setelah server bilang "buka". Selama
@@ -336,7 +420,7 @@ export default function HomePage() {
 
               {/* Mobile wizard steps */}
               <div className="sm:hidden flex items-center gap-2 mb-4">
-                {[1, 2, 3].map((s) => (
+                {[1, 2, 3, 4].map((s) => (
                   <button
                     type="button"
                     key={s}
@@ -539,6 +623,90 @@ export default function HomePage() {
                 )}
               </div>
 
+              {/* 5. Foto — opsional, jadi slide kedua di post IG */}
+              <div className={`space-y-3 ${step === 4 ? '' : 'hidden sm:block'}`}>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-ink-700 dark:text-parchment-300 font-mono uppercase tracking-widest">
+                    Foto — Opsional
+                  </p>
+                  <span className="text-[10px] font-mono text-ink-500 dark:text-ink-200 border border-parchment-300 dark:border-ink-600 px-2 py-0.5 rounded-md">
+                    {foto ? 'TERPILIH' : 'BOLEH DILEWATI'}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-ink-500 dark:text-parchment-400 font-mono leading-relaxed">
+                  JPG/PNG, maks 5 MB. Fotonya jadi slide kedua setelah kartu di
+                  postingan Instagram.
+                </p>
+
+                <input
+                  id="foto"
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  onChange={handleFotoPilih}
+                  className="hidden"
+                  disabled={submitting}
+                />
+
+                {foto ? (
+                  <div className="rounded-xl border border-parchment-300 dark:border-ink-600 overflow-hidden">
+                    <img
+                      src={fotoPreview}
+                      alt="Foto yang akan dikirim"
+                      className="w-full max-h-64 object-contain bg-parchment-200 dark:bg-ink-900"
+                    />
+                    <div className="flex gap-2 p-2 bg-parchment-100 dark:bg-ink-800">
+                      <label
+                        htmlFor="foto"
+                        className="flex-1 text-center text-xs font-mono font-semibold py-2 rounded-lg border border-parchment-300 dark:border-ink-600 text-ink-700 dark:text-parchment-300 hover:bg-parchment-200 dark:hover:bg-ink-700 cursor-pointer transition-colors"
+                      >
+                        Ganti
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setFoto(null)}
+                        disabled={submitting}
+                        className="flex-1 text-xs font-mono font-semibold py-2 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="foto"
+                    className="block border-2 border-dashed border-parchment-300 dark:border-ink-600 rounded-xl py-6 sm:py-8 text-center cursor-pointer hover:border-brand-500 hover:bg-parchment-200/50 dark:hover:bg-ink-700/50 transition-colors"
+                  >
+                    <svg
+                      className="w-7 h-7 mx-auto mb-1.5 text-ink-400 dark:text-ink-300"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                    <span className="block text-xs font-mono font-semibold text-ink-700 dark:text-parchment-300">
+                      Pilih Foto
+                    </span>
+                    <span className="block text-[11px] font-mono text-ink-500 dark:text-ink-300 mt-0.5">
+                      atau lewati kalau cuma mau kirim kartu
+                    </span>
+                  </label>
+                )}
+              </div>
+
               {/* Wizard navigation - mobile only */}
               <div className="flex items-center justify-between sm:hidden pt-2">
                 {step > 1 && (
@@ -550,7 +718,7 @@ export default function HomePage() {
                     ← Kembali
                   </button>
                 )}
-                {step < 3 && (
+                {step < 4 && (
                   <button
                     type="button"
                     onClick={() => setStep(step + 1)}
@@ -561,8 +729,8 @@ export default function HomePage() {
                 )}
               </div>
 
-                {/* Info Privasi */}
-              <div className={`bg-parchment-100 dark:bg-ink-800/90 border border-parchment-400 dark:border-ink-600 rounded-xl p-3 ${step === 3 ? '' : 'hidden sm:block'}`}>
+              {/* Info Privasi */}
+              <div className={`bg-parchment-100 dark:bg-ink-800/90 border border-parchment-400 dark:border-ink-600 rounded-xl p-3 ${step === 3 || step === 4 ? '' : 'hidden sm:block'}`}>
                 <p className="text-xs text-ink-700 dark:text-parchment-300 flex items-center gap-2">
                   <svg className="w-4 h-4 shrink-0 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -575,7 +743,7 @@ export default function HomePage() {
               <button
                 type="submit"
                 disabled={submitting || message.trim().length < 5 || (!isAnon && !senderName.trim())}
-                className={`btn-primary w-full text-center font-mono tracking-widest py-3.5 sm:py-3 shadow-lg hover:shadow-brand-900/30 transition-shadow ${step === 3 ? '' : 'hidden sm:block'}`}
+                className={`btn-primary w-full text-center font-mono tracking-widest py-3.5 sm:py-3 shadow-lg hover:shadow-brand-900/30 transition-shadow ${step === 4 ? '' : 'hidden sm:block'}`}
               >
                 {submitting ? (
                   <span className="flex items-center justify-center gap-2">

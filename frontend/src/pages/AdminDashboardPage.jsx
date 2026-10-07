@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
-import { adminAPI, siteAPI } from '../api';
+import { adminAPI, siteAPI, urlAset } from '../api';
 import ExportModal from '../components/ExportModal';
 import { TEMPLATES, parseTemplateFromMenfes, getTemplateById } from '../config/templates';
 import { clampPage, paginationItems } from '../utils/pagination.js';
@@ -549,6 +549,28 @@ export default function AdminDashboardPage() {
                       </p>
                       <span className="text-brand-600 text-lg leading-none select-none">"</span>
                     </div>
+
+                    {/* Foto pengirim — slide kedua di post IG; tampil hanya di sini dan IG. */}
+                    {item.fotoUrl && (
+                      <div className="flex items-center gap-2.5">
+                        <a
+                          href={urlAset(item.fotoUrl)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Klik untuk lihat foto penuh"
+                        >
+                          <img
+                            src={urlAset(item.fotoUrl)}
+                            alt="Foto pengirim"
+                            className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-lg border border-ink-600 hover:border-brand-500 transition-colors bg-ink-800"
+                          />
+                        </a>
+                        <span className="text-[10px] font-mono text-ink-300 leading-relaxed">
+                          Foto pengirim<br />
+                          <span className="text-ink-400">klik untuk lihat penuh</span>
+                        </span>
+                      </div>
+                    )}
 
                     {/* Info pengirim & Template */}
                     {(item.senderName || item.senderInfo) && (() => {

@@ -1,4 +1,6 @@
 const { audit } = require('../lib/audit');
+const fs = require('fs/promises');
+const path = require('path');
 const prisma = require('../lib/prisma');
 const cache = require('../lib/menfesCache');
 const adminCache = require('../lib/adminCache');
@@ -19,6 +21,17 @@ function cacheKey(status, page, limit) {
 function invalidateAll() {
   cache.invalidate();
   adminCache.invalidate();
+}
+
+// Menghapus file foto pengirim saat menfes-nya dihapus dari database.
+// Best-effort dan menelan kegagalan: baris sudah hilang, file nyasar hanya
+// sampah yang bisa dibersihkan kapan saja — bukan alasan menggagalkan delete.
+// path.basename membuang segala isi direktori dari nilai kolom, jadi walaupun
+// kolom pernah ternoda isinya tidak bisa keluar dari uploads/foto.
+function hapusFoto(fotoUrl) {
+  if (!fotoUrl || !fotoUrl.startsWith('/uploads/foto/')) return;
+  const nama = path.basename(fotoUrl);
+  fs.unlink(path.join(__dirname, '..', '..', 'uploads', 'foto', nama)).catch(() => {});
 }
 
 // Status yang dikenal. Nilai lain DITOLAK dengan 400, bukan diam-diam
@@ -70,12 +83,14 @@ async function getAllMenfes(req, res) {
           ipHash: true,
           // Status publikasi Instagram. igImageUrl sengaja tidak ikut: itu
           // alamat file di server kita dan tidak berguna di dashboard.
+          // fotoUrl JUSTRU ikut: thumbnail kiriman foto di kartu dashboard.
           igStatus: true,
           igMediaId: true,
           igPermalink: true,
           igCaption: true,
           igError: true,
           igPublishedAt: true,
+          fotoUrl: true,
         },
         orderBy: status === 'APPROVED' ? { approvedAt: 'desc' } : { createdAt: 'desc' },
         skip,
@@ -240,6 +255,7 @@ async function deleteMenfes(req, res) {
     }
 
     await prisma.menfes.delete({ where: { id } });
+    hapusFoto(menfes.fotoUrl);
 
     audit('menfes.delete', req, { menfesId: id });
     invalidateAll();
@@ -395,6 +411,10 @@ async function postMenfesToInstagram(req, res) {
 
     res.json({
       message: 'Menfes berhasil diposting ke Instagram.',
+      // Carousel bisa berakhir "tayang tanpa foto" (foto gagal diproses IG
+      // sebelum container induk dibuat). Kartu tetap tayang, tapi admin
+      // berhak tahu — jadi pesan peringatan ikut dibalas apa adanya.
+      ...(hasil.peringatan ? { peringatan: hasil.peringatan } : {}),
       data: {
         id,
         igStatus: 'PUBLISHED',

@@ -42,7 +42,20 @@ const submitLimiter = rateLimit({
 // GET /api/menfes — Ambil menfes approved (publik)
 router.get('/', getApprovedMenfes);
 
-// POST /api/menfes — Kirim menfes baru (publik)
-router.post('/', submitLimiter, submitMenfes);
+// Parser multipart untuk submit BERTAMPILAN FOTO. Sama tekniknya dengan
+// parserGambar di routes/admin.js: express.raw mengambil byte mentah (limit
+// 6MB = foto 5MB + sisa overhead form), lalu submitMenfes mengurai body itu
+// dengan Response.formData() bawaan Node — tanpa dependensi multer/busboy.
+//
+// Request JSON biasa TIDAK disentuh parser ini (type-nya multipart), jadi
+// jalur submit lama tanpa foto tetap utuh.
+const parserFoto = express.raw({
+  type: 'multipart/form-data',
+  limit: '6mb',
+});
+
+// POST /api/menfes — Kirim menfes baru (publik). Foto opsional: lewati
+// parserFoto kalau badannya JSON.
+router.post('/', submitLimiter, parserFoto, submitMenfes);
 
 module.exports = router;
