@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { menfesAPI, siteAPI } from '../api';
 import { TEMPLATES, getTemplateById } from '../config/templates';
@@ -63,7 +63,7 @@ function FooterBawah() {
 // elemen yang tidak pernah dibuat tidak bisa diaktifkan kembali. Pengaman
 // kedua tetap ada di server (submit dibalas 403), jadi menyiasati lewat API
 // langsung pun tetap mentok.
-function LayarTutup({ darkMode, setDarkMode, jamBuka }) {
+function LayarTutup({ darkMode, setDarkMode, jamBuka, gangguan = false, onCobaLagi }) {
   return (
     <div className="min-h-screen bg-parchment-100 dark:bg-ink-800 flex flex-col">
       <HeaderAtas darkMode={darkMode} setDarkMode={setDarkMode} />
@@ -79,14 +79,25 @@ function LayarTutup({ darkMode, setDarkMode, jamBuka }) {
 
           <div className="space-y-2">
             <p className="text-ink-500 dark:text-parchment-500 font-mono text-[10px] tracking-[0.25em] uppercase">
-              Bentar ya, lagi tutup dulu
+              {gangguan ? 'Lagi gangguan nih, bentar ya' : 'Bentar ya, lagi tutup dulu'}
             </p>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              <span className="text-ink-900 dark:text-parchment-100">MENFESS SEDANG </span>
-              <span className="text-brand-600">TUTUP</span>
+              {gangguan ? (
+                <>
+                  <span className="text-ink-900 dark:text-parchment-100">LAGI ADA </span>
+                  <span className="text-brand-600">GANGGUAN</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-ink-900 dark:text-parchment-100">MENFESS SEDANG </span>
+                  <span className="text-brand-600">TUTUP</span>
+                </>
+              )}
             </h2>
             <p className="text-xs sm:text-sm text-ink-700 dark:text-parchment-300 max-w-xs mx-auto">
-              Pengiriman menfess dibuka pada jam-jam di bawah ini. Tulis dulu idenya, kirim nanti pas buka!
+              {gangguan
+                ? 'Server belum bisa dihubungi, jadi kirim menfess ditahan dulu sementara. Coba lagi beberapa detik lagi ya.'
+                : 'Pengiriman menfess dibuka pada jam-jam di bawah ini. Tulis dulu idenya, kirim nanti pas buka!'}
             </p>
           </div>
 
@@ -110,13 +121,47 @@ function LayarTutup({ darkMode, setDarkMode, jamBuka }) {
             ))}
           </ul>
 
+          {/* Coba lagi — hanya di layar gangguan; poll 60 detik tetap jalan
+              otomatis di belakangnya, tombol ini cuma percepat pemulihan. */}
+          {gangguan && (
+            <button
+              type="button"
+              onClick={onCobaLagi}
+              className="btn-primary w-full font-mono tracking-widest py-3 shadow-lg hover:shadow-brand-900/30 transition-shadow"
+            >
+              COBA LAGI
+            </button>
+          )}
+
           <p className="text-[11px] text-ink-500 dark:text-ink-300 font-mono leading-relaxed">
-            Makasih udah mampir dan sabar nunggu — kamu keren abis. Sampai
-            ketemu lagi pas jam buka!
+            {gangguan
+              ? 'Makasih udah nunggu — sebentar lagi dicoba lagi otomatis ya.'
+              : 'Makasih udah mampir dan sabar nunggu — kamu keren abis. Sampai ketemu lagi pas jam buka!'}
           </p>
         </div>
       </main>
 
+      <FooterBawah />
+    </div>
+  );
+}
+
+// Layar sementara selama status buka/tutup BELUM DIKETAHUI. Fail-closed:
+// form tidak boleh tampil sebelum server bilang "buka", jadi yang dirender
+// sini cuma header + spinner — bukan form yang nanti mendadak ditimpa kunci.
+function LayarMuat({ darkMode, setDarkMode }) {
+  return (
+    <div className="min-h-screen bg-parchment-100 dark:bg-ink-800 flex flex-col">
+      <HeaderAtas darkMode={darkMode} setDarkMode={setDarkMode} />
+      <main className="flex-1 flex flex-col items-center justify-center gap-4 px-4">
+        <svg className="animate-spin h-8 w-8 text-brand-600" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        <p className="text-[11px] font-mono tracking-[0.2em] uppercase text-ink-500 dark:text-parchment-400">
+          Ngecek status menfess...
+        </p>
+      </main>
       <FooterBawah />
     </div>
   );
@@ -133,10 +178,19 @@ export default function HomePage() {
   const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState('Template 1');
   const [step, setStep] = useState(1);
   const [darkMode, setDarkMode] = useState(false);
-  // null = status belum diketahui (masih dicek / gagal jaringan).
-  // Selama null halaman tampil normal; server tetap penutup terakhir karena
-  // submit yang ditutup dibalas 403 apa pun yang terjadi di sini.
+  // null = status BELUM PERNAH diketahui. Fail-closed: selama null, form TIDAK
+  // dirender — cuma layar muat/layar gangguan. Server tetap penutup terakhir
+  // karena submit yang ditutup dibalas 403 apa pun yang terjadi di sini.
   const [situs, setSitus] = useState(null);
+  // true = fetch status gagal DAN status belum pernah diketahui (mis. kena
+  // 429/jaringan putus tepat saat halaman dibuka) → tampilkan layar tutup
+  // versi "gangguan", bukan form.
+  const [statusGagal, setStatusGagal] = useState(false);
+  // Bump angka ini untuk memaksa effect cek-status jalan ulang (tombol coba
+  // lagi di layar gangguan).
+  const [ulangCek, setUlangCek] = useState(0);
+  // Pantau apakah status PERNAH sukses, tanpa membaca state lama yang basi.
+  const pernahTahu = useRef(false);
 
   const selectedTemplate = getTemplateById(selectedTemplateId);
   const remaining = MAX_CHARS - message.length;
@@ -157,12 +211,17 @@ export default function HomePage() {
     async function cekStatus() {
       try {
         const res = await siteAPI.getStatus();
-        if (hidup) setSitus(res.data);
+        if (!hidup) return;
+        pernahTahu.current = true;
+        setStatusGagal(false);
+        setSitus(res.data);
       } catch {
-        // Gagal menghubungi server bukan alasan menutup halaman: biarkan
-        // tampil normal. Kalau memang sedang tutup, server tetap menolak
-        // submit — di sini kita hanya kehilangan layar tutupnya.
-        if (hidup) setSitus((s) => s ?? { open: true, jamBuka: [] });
+        if (!hidup) return;
+        // Fail-closed: kalau status belum pernah diketahui, JANGAN menebak
+        // "terbuka" — tampilkan layar gangguan (form tetap tidak dirender).
+        // Status yang sudah pernah diketahui dipertahankan (poll berikutnya
+        // akan memperbaikinya), dan server tetap otoritas terakhir via 403.
+        if (!pernahTahu.current) setStatusGagal(true);
       }
     }
     cekStatus();
@@ -171,7 +230,7 @@ export default function HomePage() {
       hidup = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [ulangCek]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -221,9 +280,26 @@ export default function HomePage() {
     3: 'Tampil Sebagai',
   };
 
+  // Fail-closed: form hanya tampil setelah server bilang "buka". Selama
+  // status belum pernah diketahui → layar muat; kalau pencarian statusnya
+  // gagal → layar gangguan (tetap tanpa form), bukan menebak "terbuka".
+  if (!situs) {
+    if (statusGagal) {
+      return (
+        <LayarTutup
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          gangguan
+          onCobaLagi={() => setUlangCek((x) => x + 1)}
+        />
+      );
+    }
+    return <LayarMuat darkMode={darkMode} setDarkMode={setDarkMode} />;
+  }
+
   // Menfess tutup -> ganti SELURUH halaman dengan layar tutup (lihat
   // catatan LayarTutup: form tidak dirender sama sekali, bukan ditimpa).
-  if (situs && situs.open === false) {
+  if (situs.open === false) {
     return (
       <LayarTutup
         darkMode={darkMode}

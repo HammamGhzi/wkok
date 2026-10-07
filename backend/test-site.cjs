@@ -9,7 +9,10 @@
  *      pengaman yang membuat layar tutup di halaman user tidak bisa
  *      ditembus lewat API langsung;
  *   5. toggle ditolak tanpa token (401) dan dengan tipe data salah (400);
- *   6. toggle membuka lagi -> submit kembali lolos.
+ *   6. toggle membuka lagi -> submit kembali lolos;
+ *   7. limit global 100 request/15 menit TIDAK mematikan GET /api/site/status —
+ *      kalau endpoint ini bisa membalas 429, halaman user tidak tahu situs
+ *      sedang tutup dan layar tutup jadi tidak bisa dipercaya.
  *
  * DB: database yang sama dengan test lain. Karena toggle menulis baris
  * SiteSetting di database itu, test mengambil status AWAL dulu dan
@@ -134,6 +137,32 @@ const check = (name, pass, extra = '') => {
     r = await buatMenfes('menfes uji setelah situs dibuka lagi');
     if (r.body?.id) idsMenfes.push(r.body.id);
     check('submit terbuka lagi -> 201', r.status === 201, `HTTP ${r.status}`);
+
+    // ─── 7. limit global tidak boleh mematikan cek status ───────────────────
+    // Semua request di sini pakai SATU IP yang sama supaya kuota limit
+    // (100/15 menit per IP) benar-benar menumpuk, seperti pengguna asli.
+    console.log('\n── 7. limit global vs GET /api/site/status ──');
+    const IP_TETAP = '10.79.88.88';
+    const reqIP = (path_) =>
+      fetch(`${base}${path_}`, { headers: { 'X-Forwarded-For': IP_TETAP } });
+
+    // Bukti limit global-nya HIDUP: endpoint lain yang di-limit kena 429
+    // setelah kuota 100 terpakai (tanpa ini, test di bawah bisa lolos
+    // gara-gara limiternya malah hilang total).
+    let kena429 = false;
+    for (let i = 0; i < 110 && !kena429; i++) {
+      if ((await reqIP('/api/auth/me')).status === 429) kena429 = true;
+    }
+    check('limit global tetap berlaku untuk endpoint lain (-> 429)', kena429);
+
+    // Bukti status DIBEBASKAN: 110 request berturut-turut dengan IP yang
+    // kuotanya sudah habis — tidak boleh ada satu pun yang dibalas selain 200.
+    let ok = 0;
+    for (let i = 0; i < 110; i++) {
+      if ((await reqIP('/api/site/status')).status === 200) ok++;
+    }
+    check('GET status lolos 110x dengan IP yang kehabisan kuota',
+      ok === 110, `${ok}/110 -> 200`);
   } finally {
     // ─── bersihkan: pulihkan keadaan situs persis seperti awal ──────────────
     if (statusAwal) {

@@ -97,6 +97,14 @@ const globalLimiter = rateLimit({
   message: { error: 'Terlalu banyak request. Coba lagi nanti.' },
   standardHeaders: true,
   legacyHeaders: false,
+  // GET /api/site/status dibebaskan dari limit ini, dengan alasan yang sama
+  // seperti /api/health di atas: kalau endpoint ini membalas 429, halaman
+  // user TIDAK TAHU situs sedang tutup, dan layar tutup jadi tidak bisa
+  // dipercaya. Endpointnya cuma baca SATU baris berdasarkan primary key,
+  // dipoll tiap 60 detik per tab, dan tetap dilindungi helmet + CORS.
+  // Rate limit submit/dst yang asli TIDAK disentuh.
+  skip: (req) =>
+    req.method === 'GET' && req.path === '/api/site/status',
 });
 app.use(globalLimiter);
 
