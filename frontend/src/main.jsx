@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import './index.css';
+import IntroLoader from './components/IntroLoader';
 
 import HomePage from './pages/HomePage';
 import AdminLoginPage from './pages/AdminLoginPage';
@@ -56,6 +57,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <App />
+      <IntroLoader />
     </BrowserRouter>
   </React.StrictMode>
 );
