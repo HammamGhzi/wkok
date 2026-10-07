@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { TEMPLATES, getTemplateById, parseTemplateFromMenfes } from '../config/templates';
 import { renderMenfessToCanvas, CANVAS_SIZE } from '../utils/drawMenfessCanvas';
-import { adminAPI } from '../api';
+import { adminAPI, urlAset } from '../api';
 
 // Batas caption mengikut Instagram. Menyalin angka dari backend lebih baik
 // daripada menebak: kalau backend yang menolak, admin sudah terlanjur mengetik
@@ -31,6 +31,11 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   const [fontSize, setFontSize] = useState(currentTemplate.defaultFontSize || 36);
   const [fontSizeName, setFontSizeName] = useState(currentTemplate.defaultFontSizeName || 28);
   const [downloading, setDownloading] = useState(false);
+  // Unduh foto pengirim + penanda file hilang. Disk server ephemeral (Render),
+  // jadi foto bisa raib setelah redeploy — section-nya harus jujur bilang
+  // begitu, bukan error diam-diam.
+  const [fotoDownloading, setFotoDownloading] = useState(false);
+  const [fotoHilang, setFotoHilang] = useState(false);
   // Caption diisi dari igCaption supaya menfes yang gagal tayang dan mau dicoba
   // lagi tidak mengharuskan admin mengetik ulang teksnya.
   const [caption, setCaption] = useState(menfes?.igCaption || '');
@@ -242,6 +247,30 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
       console.error(err);
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function handleDownloadFoto() {
+    setFotoDownloading(true);
+    try {
+      // Fetch dulu jadi blob: endpoint foto beda origin (Vercel ↔ Render),
+      // dan atribut `download` biasa diabaikan browser untuk cross-origin —
+      // hasilnya buka tab gambar, bukan mengunduh.
+      const res = await fetch(urlAset(menfes.fotoUrl));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = menfes.fotoUrl.split('/').pop() || 'foto.jpg';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Foto pengirim berhasil diunduh.');
+    } catch (err) {
+      toast.error('Gagal download foto.');
+      console.error(err);
+    } finally {
+      setFotoDownloading(false);
     }
   }
 
@@ -672,6 +701,65 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
               </button>
             )}
           </div>
+
+          {/* Foto pengirim — slide kedua carousel. Hanya muncul kalau menfes
+              punya foto. Kalau filenya hilang di server, section ini jujur
+              bilang begitu; post IG tetap jalan dengan fallback kartu-saja. */}
+          {menfes?.fotoUrl && (
+            <div className="bg-ink-800 border border-ink-600 rounded-xl p-3">
+              <div className="flex justify-between items-baseline mb-1.5">
+                <p className="text-[10px] font-mono font-bold text-ink-200 tracking-widest uppercase">
+                  Foto Pengirim — Slide 2
+                </p>
+                <span className="text-[10px] font-mono text-brand-400 bg-brand-950/60 border border-brand-800/60 px-2 py-0.5 rounded-md">
+                  CAROUSEL
+                </span>
+              </div>
+
+              {fotoHilang ? (
+                <p className="text-[11px] font-mono text-amber-400 leading-relaxed">
+                  File foto tidak ditemukan di server. Post ke IG tetap bisa —
+                  kartu tayang tanpa foto.
+                </p>
+              ) : (
+                <>
+                  <img
+                    src={urlAset(menfes.fotoUrl)}
+                    alt="Foto pengirim"
+                    onError={() => setFotoHilang(true)}
+                    className="w-full max-h-56 object-contain rounded-lg bg-ink-900 border border-ink-600"
+                  />
+                  <p className="text-[10px] text-ink-200 font-mono mt-1.5">
+                    Ikut tayang sebagai slide kedua setelah kartu. Diunduh apa
+                    adanya dari server buat post manual.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleDownloadFoto}
+                    disabled={fotoDownloading || sibuk}
+                    className="mt-2 w-full btn-secondary font-mono text-xs flex items-center justify-center gap-2 py-2.5 touch-manipulation disabled:opacity-40"
+                  >
+                    {fotoDownloading ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Mengunduh...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download Foto
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Caption Instagram */}
           <div className="bg-ink-800 border border-ink-600 rounded-xl p-3">
