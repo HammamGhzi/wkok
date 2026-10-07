@@ -289,7 +289,13 @@ async function terbitkan({ menfesId, imageBuffer, mimeType, caption }) {
     // Foto pengirim (kalau ada) menentukan jalurnya: tanpa foto, perilakunya
     // persis seperti sebelum fitur ini ada. Dengan foto, post jadi carousel
     // [kartu, foto] — caption hanya di container induk, dua anak tanpa caption.
-    const urlFoto = ada.fotoUrl ? `${baseUrlPublik()}${ada.fotoUrl}` : null;
+    // Dua bentuk fotoUrl: URL Cloudinary absolut (baris baru) dipakai apa
+    // adanya; path relatif lama ('/uploads/foto/...') menempel ke base publik.
+    const urlFoto = !ada.fotoUrl
+      ? null
+      : /^https:\/\//.test(ada.fotoUrl)
+        ? ada.fotoUrl
+        : `${baseUrlPublik()}${ada.fotoUrl}`;
     let peringatan = null;
     let creationIdFinal;
 

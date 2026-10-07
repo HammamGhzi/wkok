@@ -3,23 +3,25 @@
  *
  * Perilaku yang dijaga:
  *   1. jalur JSON lama tetap utuh (fotoUrl tetap null) — back-compat;
- *   2. multipart dengan foto valid -> 201, fotoUrl terisi, file ADA di disk
- *      dan isinya byte yang sama persis dengan yang dikirim;
+ *   2. multipart dengan foto valid -> 201, fotoUrl terisi URL Cloudinary
+ *      absolut, asetnya TERJANGKAU lewat jaringan dan isinya byte yang sama
+ *      persis dengan yang dikirim;
  *   3. field teks multipart (senderName) terbaca sama dengan jalur JSON;
  *   4. multipart TANPA file foto -> 201, fotoUrl null (form input kosong);
- *   5. tipe selain JPG/PNG -> 400, tidak ada baris, tidak ada file;
+ *   5. tipe selain JPG/PNG -> 400, tidak ada baris dan tidak ada aset;
  *   6. file 0 byte -> 400;
  *   7. file > 5 MB -> 400 (batas aplikasi, parser mentah 6 MB masih lolos);
  *   8. file > 6 MB -> 413 (diblokir parser sebelum sampai controller);
  *   9. daftar admin menampilkan fotoUrl;
- *  10. delete menfes membuang file fotonya dari disk.
+ *  10. delete menfes membuang aset fotonya dari Cloudinary.
  *
+ * Butuh CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET di environment: unggahan
+ * jujur ke Cloudinary sungguhan (PNG 1x1, dan asetnya dibersihkan di finally).
  * DB: database yang sama dengan test lain (lokal/dev), bukan produksi.
  */
 
 process.chdir(__dirname);
 const path = require('path');
-const fs = require('fs');
 
 const results = [];
 const check = (name, pass, extra = '') => {
@@ -27,13 +29,11 @@ const check = (name, pass, extra = '') => {
   console.log(`${pass ? 'OK   ' : 'GAGAL'}  ${name}${extra ? '   [' + extra + ']' : ''}`);
 };
 
-// PNG 1x1 yang valid — cukup untuk lolos validasi tipe dan utuh di disk.
+// PNG 1x1 yang valid — cukup untuk lolos validasi tipe dan utuh di Cloudinary.
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64'
 );
-
-const FOTO_DIR = path.join(__dirname, 'uploads', 'foto');
 
 (async () => {
   process.env.PORT = '0';
@@ -47,6 +47,7 @@ const FOTO_DIR = path.join(__dirname, 'uploads', 'foto');
 
   const { PrismaClient } = require('@prisma/client');
   const bcrypt = require('bcryptjs');
+  const cloudinary = require('./src/lib/cloudinary');
   const prisma = new PrismaClient();
 
   const USER = 'foto-test-admin';
@@ -58,7 +59,9 @@ const FOTO_DIR = path.join(__dirname, 'uploads', 'foto');
 
   // Semua id yang dibuat uji ini, dibersihkan di blok finally.
   const idBuat = [];
-  const fileDariUji = [];
+  // URL Cloudinary dari unggahan uji ini, dibuang di finally kalau ujinya
+  // berhenti sebelum kasus delete sempat membuangnya sendiri.
+  const fotoDariUji = [];
 
   let n = 0;
   const ip = () => `10.88.0.${(n++ % 250) + 1}`;
@@ -132,30 +135,28 @@ const FOTO_DIR = path.join(__dirname, 'uploads', 'foto');
       : null;
     check('fotoUrl terisi', !!rowFoto?.fotoUrl, String(rowFoto?.fotoUrl));
     check(
-      'fotoUrl berprefix /uploads/foto/',
-      !!rowFoto?.fotoUrl && rowFoto.fotoUrl.startsWith('/uploads/foto/'),
+      'fotoUrl absolut di Cloudinary',
+      !!rowFoto?.fotoUrl && rowFoto.fotoUrl.startsWith('https://res.cloudinary.com/'),
       String(rowFoto?.fotoUrl)
     );
     check('senderName terbaca dari multipart', rowFoto?.senderName === 'si-foto', String(rowFoto?.senderName));
 
-    // File benar-benar ada di disk dan isinya byte yang sama.
-    const pathFoto = rowFoto?.fotoUrl
-      ? path.join(FOTO_DIR, path.basename(rowFoto.fotoUrl))
-      : null;
-    if (pathFoto) {
-      fileDariUji.push(pathFoto);
+    // Aset benar-benar bisa diunduh dari jaringan dan isinya byte yang sama.
+    if (rowFoto?.fotoUrl) fotoDariUji.push(rowFoto.fotoUrl);
+    if (rowFoto?.fotoUrl) {
       let ada = false;
       let isiSama = false;
       try {
-        const buf = fs.readFileSync(pathFoto);
-        ada = true;
+        const res = await fetch(rowFoto.fotoUrl);
+        const buf = Buffer.from(await res.arrayBuffer());
+        ada = res.ok;
         isiSama = buf.equals(PNG_1X1);
       } catch { /* tetap false */ }
-      check('file foto ada di disk', ada, pathFoto);
-      check('isi file identik dengan yang dikirim', isiSama);
+      check('foto terunduh dari Cloudinary', ada, rowFoto.fotoUrl);
+      check('isi foto identik dengan yang dikirim', isiSama);
     } else {
-      check('file foto ada di disk', false, 'fotoUrl kosong');
-      check('isi file identik dengan yang dikirim', false, 'fotoUrl kosong');
+      check('foto terunduh dari Cloudinary', false, 'fotoUrl kosong');
+      check('isi foto identik dengan yang dikirim', false, 'fotoUrl kosong');
     }
 
     // ─── 4. multipart tanpa field foto (input file kosong) ──────────────────
@@ -232,14 +233,22 @@ const FOTO_DIR = path.join(__dirname, 'uploads', 'foto');
       r.status === 200 && adaDiList?.fotoUrl === rowFoto?.fotoUrl,
       `HTTP ${r.status}, fotoUrl=${adaDiList?.fotoUrl}`);
 
-    // ─── 10. delete membuang file foto ──────────────────────────────────────
-    console.log('\n── 10. delete menfes membuang file foto ──');
-    check('prasyarat: file foto ada sebelum delete',
-      !!pathFoto && fs.existsSync(pathFoto), String(pathFoto));
+    // ─── 10. delete membuang aset foto ─────────────────────────────────────
+    console.log('\n── 10. delete menfes membuang aset foto ──');
+    check('prasyarat: aset foto ada sebelum delete',
+      !!rowFoto?.fotoUrl && await cloudinary.adaAset(rowFoto.fotoUrl), String(rowFoto?.fotoUrl));
     r = await reqJson(`/api/admin/menfes/${idFoto}`, { method: 'DELETE', token });
     check('delete sukses (HTTP 200)', r.status === 200, `HTTP ${r.status}`);
-    check('file foto terhapus dari disk',
-      !!pathFoto && !fs.existsSync(pathFoto), String(pathFoto));
+
+    // Penghapusan jalan best-effort di belakang response delete, jadi poll
+    // sebentar. Ditanya lewat Admin API, bukan URL-nya: salinan CDN bisa
+    // bertahan setelah destroy dan bikin GET ke URL tetap 200.
+    let asetHilang = false;
+    for (let coba = 0; coba < 10 && !asetHilang; coba++) {
+      await new Promise((res) => setTimeout(res, 500));
+      asetHilang = !(await cloudinary.adaAset(rowFoto.fotoUrl));
+    }
+    check('aset foto terhapus dari Cloudinary', asetHilang, String(rowFoto?.fotoUrl));
     const hilang = idFoto ? await prisma.menfes.findUnique({ where: { id: idFoto } }) : {};
     check('baris terhapus dari database', hilang === null);
   } finally {
@@ -247,8 +256,8 @@ const FOTO_DIR = path.join(__dirname, 'uploads', 'foto');
     if (idBuat.length) {
       await prisma.menfes.deleteMany({ where: { id: { in: idBuat } } });
     }
-    for (const f of fileDariUji) {
-      try { fs.unlinkSync(f); } catch { /* mungkin sudah terhapus delete */ }
+    for (const f of fotoDariUji) {
+      try { await cloudinary.hapusFoto(f); } catch { /* mungkin sudah terhapus delete */ }
     }
     await prisma.admin.deleteMany({ where: { username: USER } });
     await prisma.$disconnect();

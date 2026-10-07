@@ -63,9 +63,11 @@ model Menfes {
   igPublishedAt DateTime?
 
   // ── Foto opsional dari pengirim ────────────────────────────────────────────
-  // Path relatif ('/uploads/foto/<namafile>'), bukan URL absolut: base URL bisa
-  // berubah sedangkan path tetap valid, dan dashboard cukup menempelkannya ke
-  // base API masing-masing. NULL = tanpa foto (post IG jadi kartu tunggal).
+  // URL absolut ke Cloudinary ('https://res.cloudinary.com/.../foto-<hex>.png')
+  // supaya asetnya bertahan lepas dari disk server (disk Render hapus tiap
+  // redeploy, sedangkan Meta bisa meminta fotonya berjam-jam kemudian).
+  // NULL = tanpa foto (post IG jadi kartu tunggal). Nilai lama berupa path
+  // relatif ('/uploads/foto/<namafile>') masih ditangani semua pembaca.
   // Foto TIDAK pernah ikut di response API publik — hanya dashboard dan
   // jalur publish Instagram yang membacanya.
   fotoUrl String?

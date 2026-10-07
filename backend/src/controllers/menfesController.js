@@ -1,8 +1,7 @@
 const crypto = require('crypto');
-const fs = require('fs/promises');
-const path = require('path');
 const { notifyNewMenfes } = require('../services/telegramBot');
 const prisma = require('../lib/prisma');
+const { unggahFoto, hapusFoto } = require('../lib/cloudinary');
 const cache = require('../lib/menfesCache');
 const { parsePaging } = require('../lib/paging');
 const { statusBuka, JAM_BUKA } = require('./siteController');
@@ -17,7 +16,6 @@ const TIPE_FOTO = new Map([
   ['image/jpg', 'jpg'],
   ['image/png', 'png'],
 ]);
-const FOTO_DIR = path.resolve(__dirname, '..', '..', 'uploads', 'foto');
 
 /**
  * Hash IP address untuk anti-spam tanpa menyimpan IP asli
@@ -104,22 +102,20 @@ async function submitMenfes(req, res) {
     // yang bisa dipalsukan client.
     const ipHash = hashIp(req.ip);
 
-    // Foto ditulis ke disk dulu, baru baris dibuat dengan fotoUrl-nya sekalian
-    // — kalau barisnya yang gagal dibuat, file tadi dibersihkan di catch.
-    // pathFoto + barisJadi dipakai untuk membersihkan tanpa sempat menghapus
-    // file yang sudah menempel pada baris yang berhasil dibuat.
-    let pathFoto = null;
+    // Foto diunggah ke Cloudinary DULU, baru baris dibuat dengan fotoUrl-nya
+    // sekalian — kalau barisnya yang gagal dibuat, aset tadi dibersihkan di
+    // catch. urlFoto + barisJadi dipakai untuk membersihkan tanpa sempat
+    // menghapus aset yang sudah menempel pada baris yang berhasil dibuat.
+    let urlFoto = null;
     let barisJadi = false;
     try {
       if (file) {
         const buffer = Buffer.from(await file.arrayBuffer());
         const ext = TIPE_FOTO.get(file.type.toLowerCase());
-        // Nama file dari angka acak, BUKAN dari nama file pengguna: nama dari
+        // Nama aset dari angka acak, BUKAN dari nama file pengguna: nama dari
         // input membuka path traversal dan membocorkan asal kiriman.
-        const namaFile = `foto-${crypto.randomBytes(10).toString('hex')}.${ext}`;
-        await fs.mkdir(FOTO_DIR, { recursive: true });
-        pathFoto = path.join(FOTO_DIR, namaFile);
-        await fs.writeFile(pathFoto, buffer);
+        const publicId = `foto-${crypto.randomBytes(10).toString('hex')}`;
+        urlFoto = (await unggahFoto(buffer, file.type, publicId, ext)).url;
       }
 
       // Simpan ke database
@@ -130,7 +126,7 @@ async function submitMenfes(req, res) {
           senderInfo: senderInfo?.trim()?.substring(0, 200) || null,
           status: 'PENDING',
           ipHash,
-          fotoUrl: pathFoto ? `/uploads/foto/${path.basename(pathFoto)}` : null,
+          fotoUrl: urlFoto,
         },
       });
       barisJadi = true;
@@ -146,9 +142,10 @@ async function submitMenfes(req, res) {
         id: menfes.id,
       });
     } catch (gagal) {
-      // Proses gagal SEBELUM baris jadi: buang file yatim supaya tidak menumpuk.
-      if (pathFoto && !barisJadi) {
-        fs.unlink(pathFoto).catch(() => {});
+      // Proses gagal SEBELUM baris jadi: buang aset Cloudinary yatim supaya
+      // tidak menumpuk sebagai sampah.
+      if (urlFoto && !barisJadi) {
+        hapusFoto(urlFoto).catch(() => {});
       }
       throw gagal;
     }

@@ -7,6 +7,7 @@ const adminCache = require('../lib/adminCache');
 const { parsePaging } = require('../lib/paging');
 const igApi = require('../services/instagramApi');
 const igPublish = require('../services/igPublish');
+const { hapusFoto: hapusAsetCloudinary } = require('../lib/cloudinary');
 
 // Kunci cache untuk daftar admin. Status sudah diambil dari daftar putih di
 // bawah dan page serta limit sudah dijepit parsePaging, jadi ruang kuncinya
@@ -23,15 +24,22 @@ function invalidateAll() {
   adminCache.invalidate();
 }
 
-// Menghapus file foto pengirim saat menfes-nya dihapus dari database.
-// Best-effort dan menelan kegagalan: baris sudah hilang, file nyasar hanya
+// Menghapus foto pengirim saat menfes-nya dihapus dari database.
+// Best-effort dan menelan kegagalan: baris sudah hilang, aset nyasar hanya
 // sampah yang bisa dibersihkan kapan saja — bukan alasan menggagalkan delete.
-// path.basename membuang segala isi direktori dari nilai kolom, jadi walaupun
-// kolom pernah ternoda isinya tidak bisa keluar dari uploads/foto.
+// Baris baru menyimpan URL Cloudinary absolut (dibuang lewat API-nya, termasuk
+// salinan CDN-nya); baris lama masih '/uploads/foto/...' dan tetap di-unlink
+// dari disk. path.basename membuang segala isi direktori dari nilai kolom,
+// jadi walaupun kolom pernah ternoda isinya tidak bisa keluar dari uploads/foto.
 function hapusFoto(fotoUrl) {
-  if (!fotoUrl || !fotoUrl.startsWith('/uploads/foto/')) return;
-  const nama = path.basename(fotoUrl);
-  fs.unlink(path.join(__dirname, '..', '..', 'uploads', 'foto', nama)).catch(() => {});
+  if (!fotoUrl) return;
+  if (fotoUrl.startsWith('/uploads/foto/')) {
+    const nama = path.basename(fotoUrl);
+    fs.unlink(path.join(__dirname, '..', '..', 'uploads', 'foto', nama)).catch(() => {});
+    return;
+  }
+  // Non-URL Cloudinary dibiarkan di sini: hapusAsetCloudinary sendiri mengabaikannya.
+  hapusAsetCloudinary(fotoUrl).catch((err) => console.error('Buang aset Cloudinary (non-fatal):', err.message));
 }
 
 // Status yang dikenal. Nilai lain DITOLAK dengan 400, bukan diam-diam

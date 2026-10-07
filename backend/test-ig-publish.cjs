@@ -291,6 +291,24 @@ async function main() {
   check('tanpa peringatan kalau carousel lancar', rFoto.peringatan === null, String(rFoto.peringatan));
   check('igStatus ditulis PUBLISHED', updateTerakhir().igStatus === 'PUBLISHED', updateTerakhir().igStatus);
 
+  // ─── 6c. Carousel: fotoUrl absolut Cloudinary (bentuk kolom yang kini dipakai)
+  console.log('\n== carousel (fotoUrl absolut) ==');
+  reset();
+  const fotoAbsolut = 'https://res.cloudinary.com/uji-foto/image/upload/v1767123/foto-abc123.png';
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED', fotoUrl: fotoAbsolut,
+  };
+  await igPublish.terbitkan({
+    menfesId: 'M1',
+    imageBuffer: JPEG,
+    mimeType: 'image/jpeg',
+    caption: 'carousel absolut',
+  });
+  const anakAbs = igCalls.filter((c) => c.fn === 'createImageContainer');
+  check('foto absolut dipakai apa adanya, tanpa base publik ditempel',
+    anakAbs[1]?.args.imageUrl === fotoAbsolut, anakAbs[1]?.args.imageUrl);
+
   // Kegagalan membangun carousel: kartu TETAP tayang tanpa foto, dengan
   // peringatan terbuka — bukan gagal total dan bukan ditelan diam-diam.
   console.log('\n== carousel gagal -> fallback kartu tunggal ==');

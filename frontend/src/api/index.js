@@ -42,11 +42,13 @@ export const menfesAPI = {
 };
 
 // ── URL file statis (foto pengirim) ───────────────────────────────────────
-// Kolom fotoUrl disimpan relatif ('/uploads/foto/...') supaya tahan terhadap
-// perubahan base URL. BASE_URL selalu berujung '/api' — file statis dilayani
-// tanpa prefix itu, jadi '/api' dibuang dulu sebelum path ditempel.
+// Dua bentuk di kolom fotoUrl: URL absolut Cloudinary (baris baru) dilewatkan
+// apa adanya, dan path relatif ('/uploads/foto/...', baris lama) menempel ke
+// base API. BASE_URL selalu berujung '/api' — file statis dilayani tanpa
+// prefix itu, jadi '/api' dibuang dulu sebelum path ditempel.
 export function urlAset(relPath) {
   if (!relPath) return null;
+  if (/^https:\/\//.test(relPath)) return relPath;
   return BASE_URL.replace(/\/api$/, '') + relPath;
 }
 
