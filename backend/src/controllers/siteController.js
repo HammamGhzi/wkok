@@ -13,7 +13,7 @@ const prisma = require('../lib/prisma');
 //
 // Karena sakelar manual, tidak ada satu pun kode di sini yang membaca jam:
 // tidak ada perhitungan timezone, tidak ada yang berubah sendiri tengah malam.
-const JAM_BUKA = ['08.00 – 10.00', '12.00 – 14.00', '18.00 – 21.00'];
+const JAM_BUKA = ['08.00 – 10.00', '12.00 – 14.00', '16.00 – 21.00'];
 
 /**
  * Baca sakelar. Dipakai dua tempat: endpoint status publik dan guard submit.

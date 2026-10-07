@@ -23,7 +23,7 @@ model Admin {
 // diam-diam sebelum admin sempat menekan apa pun.
 //
 // Jadwal jam buka TIDAK disimpan di sini: jadwal itu statis (08-10, 12-14,
-// 18-21) dan hidup sebagai konstanta di kode, supaya tidak ada dua sumber
+// 16-21) dan hidup sebagai konstanta di kode, supaya tidak ada dua sumber
 // kebenaran yang bisa berbeda.
 model SiteSetting {
   id        String   @id

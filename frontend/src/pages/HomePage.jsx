@@ -140,7 +140,7 @@ function LayarTutup({ darkMode, setDarkMode, jamBuka, gangguan = false, onCobaLa
 
           {/* Jadwal jam buka */}
           <ul className="space-y-2 text-left">
-            {(jamBuka?.length ? jamBuka : ['08.00 – 10.00', '12.00 – 14.00', '18.00 – 21.00']).map((jam) => (
+            {(jamBuka?.length ? jamBuka : ['08.00 – 10.00', '12.00 – 14.00', '16.00 – 21.00']).map((jam) => (
               <li
                 key={jam}
                 className="flex items-center justify-between bg-white/70 dark:bg-ink-900/70 border border-parchment-300 dark:border-ink-600 rounded-xl px-4 py-3"
