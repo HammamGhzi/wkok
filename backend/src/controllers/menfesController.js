@@ -17,6 +17,39 @@ const TIPE_FOTO = new Map([
   ['image/png', 'png'],
 ]);
 
+// ── Lagu pilihan pengirim (opsional) ─────────────────────────────────────────
+// Metadata lagu diterima SEBAGAI SNAPSHOT dari klien (bukan ditarik ulang dari
+// YouTube) supaya submit tidak pernah gantung saat YouTube mati. Yang dijaga
+// ketat hanya videoId — tautan playback satu-satunya — dan panjang teksnya.
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+const potong = (v, maks) => (typeof v === 'string' ? v.trim().substring(0, maks) : null);
+
+function normalisasiMusic(mentah) {
+  // Bentuk objek (request JSON) maupun string (FormData) sama-sama diterima.
+  let m = mentah;
+  if (typeof m === 'string') {
+    try {
+      m = JSON.parse(m);
+    } catch {
+      return { salah: 'Lagu tidak valid.' };
+    }
+  }
+  if (!m || typeof m !== 'object') return { salah: 'Lagu tidak valid.' };
+  if (!VIDEO_ID.test(String(m.videoId || ''))) return { salah: 'videoId lagu tidak valid.' };
+  return {
+    music: {
+      videoId: String(m.videoId),
+      title: potong(m.title, 100) || 'Tanpa judul',
+      artist: potong(m.artist, 100) || 'Tanpa artis',
+      thumb:
+        typeof m.thumb === 'string' && m.thumb.startsWith('https://')
+          ? m.thumb.substring(0, 500)
+          : null,
+      duration: Number.isFinite(m.duration) && m.duration >= 0 ? Math.round(m.duration) : null,
+    },
+  };
+}
+
 /**
  * Hash IP address untuk anti-spam tanpa menyimpan IP asli
  */
@@ -66,6 +99,14 @@ async function submitMenfes(req, res) {
     }
 
     const { message, senderName, senderInfo } = fields;
+
+    // Lagu opsional — dinormalisasi SEBELUM upload foto dan pembuatan baris.
+    let music = null;
+    if (fields.music !== undefined && fields.music !== null && fields.music !== '') {
+      const hasil = normalisasiMusic(fields.music);
+      if (hasil.salah) return res.status(400).json({ error: hasil.salah });
+      music = hasil.music;
+    }
 
     // Validasi pesan
     if (!message || typeof message !== 'string') {
@@ -127,6 +168,9 @@ async function submitMenfes(req, res) {
           status: 'PENDING',
           ipHash,
           fotoUrl: urlFoto,
+          // Tanpa lagu: kolomnya TIDAK disentuh sama sekali (nullable JSON —
+          // meng-omit lebih aman daripada menulis null eksplisit ke kolom Json).
+          ...(music ? { music } : {}),
         },
       });
       barisJadi = true;

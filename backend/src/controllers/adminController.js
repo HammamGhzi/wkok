@@ -99,6 +99,9 @@ async function getAllMenfes(req, res) {
           igError: true,
           igPublishedAt: true,
           fotoUrl: true,
+          // Lagu pilihan pengirim — hanya di sini (dashboard). API publik
+          // sengaja tidak memilih kolom ini sama sekali.
+          music: true,
         },
         orderBy: status === 'APPROVED' ? { approvedAt: 'desc' } : { createdAt: 'desc' },
         skip,
