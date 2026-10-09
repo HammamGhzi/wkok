@@ -39,6 +39,69 @@ function StatusBadge({ status }) {
   );
 }
 
+// ── Lagu pilihan pengirim ────────────────────────────────────────────────────
+// Tampil hanya kalau menfess membawa lagu. Preview memakai embed YouTube resmi
+// dengan parameter end=30: player BERHENTI SENDIRI di detik ke-30 — yang
+// terdengar cuma preview, dan tidak ada audio yang lewat server kita.
+// Iframe dirender HANYA saat tombol Putar ditekan (dan dibuang saat
+// dihentikan): tanpa autoplay, tanpa player yang terus berbunyi saat scroll.
+function BlokMusik({ music }) {
+  const [putar, setPutar] = useState(false);
+  const durasi =
+    typeof music.duration === 'number' && Number.isFinite(music.duration)
+      ? `${Math.floor(music.duration / 60)}:${String(music.duration % 60).padStart(2, '0')}`
+      : null;
+
+  return (
+    <div className="bg-ink-800 border border-ink-600 rounded-lg p-2.5 sm:p-3 space-y-2.5">
+      <div className="flex items-start gap-3">
+        {putar ? (
+          <iframe
+            className="w-40 h-24 sm:w-56 sm:h-32 rounded-lg border border-ink-600 bg-ink-900 shrink-0"
+            src={`https://www.youtube-nocookie.com/embed/${music.videoId}?start=0&end=30&rel=0`}
+            title={`Preview ${music.title}`}
+            allow="accelerometer; encrypted-media; picture-in-picture"
+            allowFullScreen
+          />
+        ) : (
+          music.thumb && (
+            <img
+              src={music.thumb}
+              alt=""
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg object-cover border border-ink-600 bg-ink-900 shrink-0"
+            />
+          )
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-mono font-bold text-ink-200 tracking-widest uppercase mb-0.5">
+            Lagu Pilihan
+          </p>
+          <p className="text-xs sm:text-sm text-parchment-200 font-semibold truncate">
+            {music.title}
+          </p>
+          <p className="text-[11px] text-ink-300 truncate">
+            {music.artist}
+            {durasi ? ` · ${durasi}` : ''}
+          </p>
+          <p className="text-[10px] text-ink-400 font-mono mt-0.5">
+            Preview 30 detik · embed YouTube
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => setPutar((p) => !p)}
+        className="flex items-center gap-1.5 text-[11px] font-mono font-semibold px-3 py-1.5 rounded-lg border border-brand-600 text-brand-400 hover:bg-brand-600/10 transition-colors"
+      >
+        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+        {putar ? 'Hentikan' : 'Putar'}
+      </button>
+    </div>
+  );
+}
+
 export default function AdminDashboardPage() {
   const { admin, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('PENDING');
@@ -571,6 +634,10 @@ export default function AdminDashboardPage() {
                         </span>
                       </div>
                     )}
+
+                    {/* Lagu pilihan pengirim — referensi admin saja, tidak
+                        pernah ikut ke feed publik maupun Instagram. */}
+                    {item.music && <BlokMusik music={item.music} />}
 
                     {/* Info pengirim & Template */}
                     {(item.senderName || item.senderInfo) && (() => {
