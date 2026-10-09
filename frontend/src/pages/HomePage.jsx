@@ -637,7 +637,7 @@ export default function HomePage() {
 
               {/* 4. Musik — opsional, cuma referensi admin di dashboard */}
               <div className={`space-y-3 ${step === 4 ? '' : 'hidden sm:block'}`}>
-                <MusicPicker value={music} onChange={setMusic} disabled={submitting} />
+                <MusicPicker value={music} onChange={setMusic} disabled={submitting} aktif={step === 4} />
               </div>
 
               {/* 5. Foto — opsional, jadi slide kedua di post IG */}

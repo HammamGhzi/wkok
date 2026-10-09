@@ -19,8 +19,10 @@ Keputusan yang sudah disepakati:
 - Library dipanggil **dari backend, bukan browser** — endpoint search jadi
   proxy, CORS/cookie tidak bocor ke klien.
 - Playback preview memakai **YouTube IFrame resmi**
-  (`youtube-nocookie.com/embed/...&end=30`), iframe dirender hanya saat
-  tombol Putar diklik. Tidak ada streaming/download audio di sisi kita.
+  (`youtube-nocookie.com/embed/...?autoplay=1&start=0&end=30`). Di sisi
+  user, iframe langsung ter-render **autoplay** begitu lagu dipilih dan
+  berhenti sendiri di detik ke-30; di dashboard admin tetap manual
+  (klik Putar). Tidak ada streaming/download audio di sisi kita.
 - Urutan wizard: **step 4 = Musik (opsional), step 5 = Foto (opsional)**.
 - Tidak di-push ke origin sampai user bilang push.
 
@@ -90,8 +92,12 @@ jadi satu kolom JSON (bukan 4 kolom terpisah).
 - Widget baru **MusicPicker** di step 4:
   - input search dengan debounce 400ms -> `GET /api/music/search`.
   - daftar hasil: thumbnail + judul + artist + durasi; klik = pilih.
-  - state terpilih: kartu "TERPILIH" + tombol Ganti/Hapus — pola blok
-    Foto (Ganti/Hapus) dipakai ulang.
+  - state terpilih: kartu "TERPILIH" + tombol **Putar/Hentikan**,
+    **Ganti**, **Hapus** — pola blok Foto (Ganti/Hapus) dipakai ulang.
+    Preview autoplay saat dipilih (klik hasil = user gesture), dan
+    **berhenti — iframe dibuang — saat user tinggali step 4** lewat prop
+    `aktif={step === 4}` di HomePage, supaya audio tidak terus
+    menyiarkan dari container yang tersembunyi CSS.
   - ke-gagalan search -> pesan "lagu lagi gangguan" tanpa merusak form.
   - step opsional: boleh dilewati tanpa konsekuensi.
 - Wizard mobile: dot `[1..5]`, "Lanjut" sampai `step < 5`, tombol KIRIM
@@ -133,14 +139,17 @@ jadi satu kolom JSON (bukan 4 kolom terpisah).
   6. API publik `getApprovedMenfes` **tidak** membawa field `music`.
   7. API admin membawa field `music`.
   8. baris uji dibersihkan di `finally`.
-- Frontend: verifikasi manual via browser (submit -> dashboard -> klik
-  Putar -> preview berhenti di ~30 detik).
+- Frontend: verifikasi manual via browser (pilih lagu -> autoplay
+  berhenti di ~30 detik -> Hentikan/Putar/Ganti/Hapus -> pindah step
+  bunyi mati -> submit -> dashboard admin -> klik Putar).
 
 ## Batasan (By Design)
 
 - Tidak ada audio streaming sendiri, tidak ada download, tidak ada
   penyimpanan file lagu — hanya `videoId` + snapshot teks.
-- Tidak ada autoplay.
+- Autoplay **hanya di step 4 sisi user**, dibatasi `end=30` (berhenti
+  sendiri) dan dibuang saat tinggalkan step 4. Dashboard admin tetap
+  tanpa autoplay — klik Putar manual.
 - Search di belakang rate-limit global (tidak bisa dipakai untuk membanjir
   YouTube dari IP server).
 - Library unofficial: bisa pecah kalo YouTube mengubah internal API;

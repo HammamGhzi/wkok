@@ -7,16 +7,28 @@ function fmtDurasi(d) {
 }
 
 // ── Step "Musik" pada wizard menfess ─────────────────────────────────────────
-// Cari lagu lewat backend, pilih satu hasil. Lagu TIDAK diputar di sini:
-// pilihan ini murni referensi admin di dashboard, dan preview-nya memakai
-// embed resmi YouTube di sana (berhenti sendiri di detik ke-30).
-export default function MusicPicker({ value, onChange, disabled = false }) {
+// Cari lagu lewat backend, pilih satu hasil. Saat dipilih, preview 30 detik
+// langsung bunyi lewat embed resmi YouTube (autoplay, berhenti sendiri di
+// detik ke-30) — kalau browser memblokir autoplay, iframe tetap tampil dengan
+// tombol play bawaan YouTube. Pilihan tetap murni referensi admin di
+// dashboard; tidak ada audio yang lewat server kita.
+export default function MusicPicker({ value, onChange, disabled = false, aktif = true }) {
   const [q, setQ] = useState('');
   const [hasil, setHasil] = useState([]);
   const [cari, setCari] = useState(false);
   const [gagal, setGagal] = useState(false);
   const [kosong, setKosong] = useState(false);
+  const [putar, setPutar] = useState(false);
   const seq = useRef(0);
+
+  // Lepas player (dan matikan audionya) saat step musik ditinggalkan ATAU
+  // pilihan dibersihkan — tidak pernah ada audio ngehidden di belakang form.
+  useEffect(() => {
+    if (!aktif) setPutar(false);
+  }, [aktif]);
+  useEffect(() => {
+    if (!value) setPutar(false);
+  }, [value]);
 
   // Debounce 400ms: mengetik "tulus manusia baik" cukup memicu SATU request
   // (yang terakhir), bukan satu per ketukan. `seq` menjamin respons
@@ -71,33 +83,58 @@ export default function MusicPicker({ value, onChange, disabled = false }) {
       </div>
 
       <p className="text-[11px] text-ink-500 dark:text-parchment-400 font-mono leading-relaxed">
-        Pilih satu lagu sebagai referensi admin. Cuma judul dan thumbnail yang
-        disimpan — tidak ada audio yang diunggah ke server.
+        Pilih satu lagu sebagai referensi admin — preview 30 detik langsung
+        diputar. Cuma judul dan thumbnail yang disimpan — tidak ada audio yang
+        diunggah ke server.
       </p>
 
       {value ? (
         <div className="rounded-xl border border-parchment-300 dark:border-ink-600 overflow-hidden">
-          <div className="flex items-center gap-3 p-2.5 bg-parchment-100 dark:bg-ink-800">
-            {value.thumb ? (
-              <img
-                src={value.thumb}
-                alt=""
-                className="w-12 h-12 rounded-lg object-cover bg-parchment-200 dark:bg-ink-900"
+          <div className="space-y-2 p-2.5 bg-parchment-100 dark:bg-ink-800">
+            {/* Player 30 detik — autoplay karena memilih lagu = gesture user;
+                kalau browser tetap memblokir, iframe punya tombol play bawaan.
+                end=30: berhenti sendiri di detik ke-30. */}
+            {putar && (
+              <iframe
+                className="w-full aspect-video rounded-lg bg-ink-900"
+                src={`https://www.youtube-nocookie.com/embed/${value.videoId}?autoplay=1&start=0&end=30&rel=0`}
+                title={`Preview ${value.title}`}
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
               />
-            ) : (
-              <div className="w-12 h-12 rounded-lg bg-parchment-200 dark:bg-ink-900" />
             )}
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-ink-900 dark:text-parchment-100 truncate">
-                {value.title}
-              </p>
-              <p className="text-xs text-ink-500 dark:text-parchment-400 truncate">
-                {value.artist}
-                {durasi ? ` · ${durasi}` : ''}
-              </p>
+            <div className="flex items-center gap-3">
+              {!putar &&
+                (value.thumb ? (
+                  <img
+                    src={value.thumb}
+                    alt=""
+                    className="w-12 h-12 rounded-lg object-cover bg-parchment-200 dark:bg-ink-900"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-parchment-200 dark:bg-ink-900" />
+                ))}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-ink-900 dark:text-parchment-100 truncate">
+                  {value.title}
+                </p>
+                <p className="text-xs text-ink-500 dark:text-parchment-400 truncate">
+                  {value.artist}
+                  {durasi ? ` · ${durasi}` : ''}
+                </p>
+              </div>
             </div>
           </div>
           <div className="flex gap-2 p-2 bg-parchment-100 dark:bg-ink-800 border-t border-parchment-300 dark:border-ink-600">
+            {/* Putar/Hentikan: iframe dirender dibuang — audio ikut mati. */}
+            <button
+              type="button"
+              onClick={() => setPutar((p) => !p)}
+              disabled={disabled}
+              className="flex-1 text-xs font-mono font-semibold py-2 rounded-lg border border-brand-600 text-brand-600 dark:text-brand-400 hover:bg-brand-600/10 transition-colors"
+            >
+              {putar ? 'Hentikan' : 'Putar'}
+            </button>
             {/* Ganti: kembali ke daftar hasil dengan query yang masih ada. */}
             <button
               type="button"
@@ -155,7 +192,11 @@ export default function MusicPicker({ value, onChange, disabled = false }) {
               <li key={s.videoId}>
                 <button
                   type="button"
-                  onClick={() => onChange(s)}
+                  onClick={() => {
+                    // Pilih lagu = langsung bunyi (autoplay = gesture klik).
+                    onChange(s);
+                    setPutar(true);
+                  }}
                   disabled={disabled}
                   className="w-full flex items-center gap-3 p-2 rounded-lg border border-parchment-300 dark:border-ink-600 text-left hover:border-brand-500 hover:bg-parchment-200/50 dark:hover:bg-ink-700/50 transition-colors"
                 >
