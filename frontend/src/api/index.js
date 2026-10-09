@@ -41,6 +41,14 @@ export const menfesAPI = {
     api.get('/menfes', { params: { page, limit } }),
 };
 
+// ─── Musik (lagu pilihan pengirim) ───────────────────────────────────────────
+export const musicAPI = {
+  // Pencarian lewat backend (proxy ytmusic-api): browser tidak bicara langsung
+  // ke YouTube, jadi tanpa CORS dan library cukup hidup di satu tempat. Ikut
+  // globalLimiter (100 req/15 menit/IP) seperti route lain.
+  cari: (q) => api.get('/music/search', { params: { q } }),
+};
+
 // ── URL file statis (foto pengirim) ───────────────────────────────────────
 // Dua bentuk di kolom fotoUrl: URL absolut Cloudinary (baris baru) dilewatkan
 // apa adanya, dan path relatif ('/uploads/foto/...', baris lama) menempel ke

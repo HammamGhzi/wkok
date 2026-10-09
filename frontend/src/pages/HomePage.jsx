@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { menfesAPI, siteAPI } from '../api';
 import { TEMPLATES, getTemplateById } from '../config/templates';
 import TemplatePreview from '../components/TemplatePreview';
+import MusicPicker from '../components/MusicPicker';
 
 const MAX_CHARS = 500;
 const MAX_NAME = 30;
@@ -214,6 +215,10 @@ export default function HomePage() {
   const [submitted, setSubmitted] = useState(false);
   const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState('Template 1');
   const [step, setStep] = useState(1);
+
+  // Lagu pilihan pengirim (step 4). Null = tanpa lagu — fieldnya tidak ikut
+  // dikirim, server menyimpan kolom music sebagai NULL.
+  const [music, setMusic] = useState(null);
   // Foto opsional pengirim. Null = tanpa foto (perilaku persis seperti
   // sebelum fitur ini ada). Yang disimpan adalah HASIL re-encode, jadi
   // pratinjau menampilkan byte yang benar-benar akan dikirim.
@@ -304,6 +309,8 @@ export default function HomePage() {
         if (!isAnon && senderName.trim()) form.append('senderName', senderName.trim());
         form.append('senderInfo', selectedTemplate.name);
         form.append('foto', foto, foto.name);
+        // Lagu dikirim sebagai string JSON (FormData hanya menyimpan teks).
+        if (music) form.append('music', JSON.stringify(music));
         // Foto bisa 5 MB; timeout 10 detik default ketat untuk koneksi lambat.
         await menfesAPI.submit(form, { timeout: 30000 });
       } else {
@@ -311,6 +318,8 @@ export default function HomePage() {
           message: trimmed,
           senderName: isAnon ? null : senderName.trim(),
           senderInfo: selectedTemplate.name,
+          // Lagu hanya ikut kalau dipilih; tanpa pilihan, field tidak dikirim.
+          ...(music ? { music } : {}),
         });
       }
       setLastSubmittedTemplate(selectedTemplate.name);
@@ -354,6 +363,7 @@ export default function HomePage() {
     setSelectedTemplateId('template1');
     setShowPreview(true);
     setFoto(null);
+    setMusic(null);
     setStep(1);
   }
 
@@ -361,7 +371,8 @@ export default function HomePage() {
     1: 'Pilih Template',
     2: 'Isi Pesan',
     3: 'Tampil Sebagai',
-    4: 'Foto — Opsional',
+    4: 'Musik — Opsional',
+    5: 'Foto — Opsional',
   };
 
   // Fail-closed: form hanya tampil setelah server bilang "buka". Selama
@@ -420,7 +431,7 @@ export default function HomePage() {
 
               {/* Mobile wizard steps */}
               <div className="sm:hidden flex items-center gap-2 mb-4">
-                {[1, 2, 3, 4].map((s) => (
+                {[1, 2, 3, 4, 5].map((s) => (
                   <button
                     type="button"
                     key={s}
@@ -623,8 +634,13 @@ export default function HomePage() {
                 )}
               </div>
 
-              {/* 5. Foto — opsional, jadi slide kedua di post IG */}
+              {/* 4. Musik — opsional, cuma referensi admin di dashboard */}
               <div className={`space-y-3 ${step === 4 ? '' : 'hidden sm:block'}`}>
+                <MusicPicker value={music} onChange={setMusic} disabled={submitting} />
+              </div>
+
+              {/* 5. Foto — opsional, jadi slide kedua di post IG */}
+              <div className={`space-y-3 ${step === 5 ? '' : 'hidden sm:block'}`}>
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-ink-700 dark:text-parchment-300 font-mono uppercase tracking-widest">
                     Foto — Opsional
@@ -718,7 +734,7 @@ export default function HomePage() {
                     ← Kembali
                   </button>
                 )}
-                {step < 4 && (
+                {step < 5 && (
                   <button
                     type="button"
                     onClick={() => setStep(step + 1)}
@@ -730,7 +746,7 @@ export default function HomePage() {
               </div>
 
               {/* Info Privasi */}
-              <div className={`bg-parchment-100 dark:bg-ink-800/90 border border-parchment-400 dark:border-ink-600 rounded-xl p-3 ${step === 3 || step === 4 ? '' : 'hidden sm:block'}`}>
+              <div className={`bg-parchment-100 dark:bg-ink-800/90 border border-parchment-400 dark:border-ink-600 rounded-xl p-3 ${step === 3 || step === 4 || step === 5 ? '' : 'hidden sm:block'}`}>
                 <p className="text-xs text-ink-700 dark:text-parchment-300 flex items-center gap-2">
                   <svg className="w-4 h-4 shrink-0 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -743,7 +759,7 @@ export default function HomePage() {
               <button
                 type="submit"
                 disabled={submitting || message.trim().length < 5 || (!isAnon && !senderName.trim())}
-                className={`btn-primary w-full text-center font-mono tracking-widest py-3.5 sm:py-3 shadow-lg hover:shadow-brand-900/30 transition-shadow ${step === 4 ? '' : 'hidden sm:block'}`}
+                className={`btn-primary w-full text-center font-mono tracking-widest py-3.5 sm:py-3 shadow-lg hover:shadow-brand-900/30 transition-shadow ${step === 5 ? '' : 'hidden sm:block'}`}
               >
                 {submitting ? (
                   <span className="flex items-center justify-center gap-2">
