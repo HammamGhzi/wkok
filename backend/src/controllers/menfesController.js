@@ -22,6 +22,10 @@ const TIPE_FOTO = new Map([
 // YouTube) supaya submit tidak pernah gantung saat YouTube mati. Yang dijaga
 // ketat hanya videoId — tautan playback satu-satunya — dan panjang teksnya.
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+// Thumbnail HANYA dari properti Google. URL bebas dari klien akan di-fetch
+// browser admin saat kartu tampil (beacon: IP + waktu review dashboard) —
+// jadi hostnya dikunci ke keluarga domain yang dipakai thumbnail YouTube.
+const THUMB_SAH = /^https:\/\/([a-z0-9-]+\.)*(ytimg\.com|ggpht\.com|googleusercontent\.com)\//;
 const potong = (v, maks) => (typeof v === 'string' ? v.trim().substring(0, maks) : null);
 
 function normalisasiMusic(mentah) {
@@ -36,15 +40,18 @@ function normalisasiMusic(mentah) {
   }
   if (!m || typeof m !== 'object') return { salah: 'Lagu tidak valid.' };
   if (!VIDEO_ID.test(String(m.videoId || ''))) return { salah: 'videoId lagu tidak valid.' };
+  // Thumb ada tapi dari host bebas → tolak (bukan diam-diam dibuang): request
+  // ini bukan datang dari form asli (search selalu menghasilkan thumb Google),
+  // dan 400 konsisten dengan videoId rusak — tanpa baris, tanpa aset.
+  if (typeof m.thumb === 'string' && m.thumb && !THUMB_SAH.test(m.thumb)) {
+    return { salah: 'Thumbnail lagu tidak valid.' };
+  }
   return {
     music: {
       videoId: String(m.videoId),
       title: potong(m.title, 100) || 'Tanpa judul',
       artist: potong(m.artist, 100) || 'Tanpa artis',
-      thumb:
-        typeof m.thumb === 'string' && m.thumb.startsWith('https://')
-          ? m.thumb.substring(0, 500)
-          : null,
+      thumb: THUMB_SAH.test(String(m.thumb || '')) ? m.thumb.substring(0, 500) : null,
       duration: Number.isFinite(m.duration) && m.duration >= 0 ? Math.round(m.duration) : null,
     },
   };

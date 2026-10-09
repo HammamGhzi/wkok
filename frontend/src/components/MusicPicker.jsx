@@ -24,6 +24,11 @@ export default function MusicPicker({ value, onChange, disabled = false }) {
   useEffect(() => {
     const kata = q.trim();
     if (kata.length < 2) {
+      // Naikkan seq SEKALIGUS: request lama yang masih in-flight harus jadi
+      // basi — kalau tidak, hasil query sebelumnya bisa muncul kembali di
+      // bawah input yang sudah dikosongkan.
+      seq.current += 1;
+      setCari(false);
       setHasil([]);
       setKosong(false);
       setGagal(false);

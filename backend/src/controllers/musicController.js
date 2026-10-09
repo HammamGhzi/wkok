@@ -23,15 +23,24 @@ function kedaluwarsa(ms, pesan) {
  */
 async function cariMusik(req, res) {
   const q = String(req.query.q || '').trim();
-  if (q.length < Q_MIN || q.length > Q_MAKS) {
+  if (q.length < Q_MIN) {
     return res.status(400).json({ error: `Kata kunci minimal ${Q_MIN} karakter.` });
+  }
+  if (q.length > Q_MAKS) {
+    return res.status(400).json({ error: `Kata kunci maksimal ${Q_MAKS} karakter.` });
   }
 
   try {
     const hasil = await Promise.race([cariLagu(q), kedaluwarsa(TIMEOUT_MS, 'pencarian lambat')]);
+    // Guard non-array: library yang balik bukan-array dibalas daftar kosong
+    // (klien menampilkan "tidak ditemukan"), bukan 502 — transport sukses.
+    const daftar = Array.isArray(hasil) ? hasil : [];
     res.json({
-      data: hasil
+      data: daftar
         .filter((s) => s && typeof s.videoId === 'string' && typeof s.name === 'string')
+        // Hanya tawarkan videoId yang pasti lolos validasi submit — kalau
+        // tidak, pengirim memilih lagu lalu mati di 400 tanpa jalan keluar.
+        .filter((s) => /^[A-Za-z0-9_-]{11}$/.test(s.videoId))
         .slice(0, HASIL_MAKS)
         .map((s) => ({
           videoId: s.videoId,

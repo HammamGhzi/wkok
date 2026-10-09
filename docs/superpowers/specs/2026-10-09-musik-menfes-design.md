@@ -48,7 +48,10 @@ Feed publik / IG: tanpa jejak musik (kolom tidak di-select)
 - Query minimal 2 karakter, maksimal 100; balas maksimal 10 hasil:
   `{ videoId, title, artist, duration, thumb }` diambil dari
   `ytmusic-api.searchSongs()`.
-- Client `ytmusic-api` di-`initialize()` sekali saat server start
+- Client `ytmusic-api` di-`initialize()` LAZY (saat pencarian pertama, hasilnya
+  di-cache sebagai promise) — server tetap bisa start walau YouTube tidak
+  terjangkau, dan kegagalan initialize melempar error yang dibalas 502 ramah
+  (diperbarui dari rancangan awal "sekali saat server start")
   (tanpa cookies — search publik tidak butuh login).
 - Ke-gagalan dari YouTube (timeout/5xx) -> `502` dengan pesan
   "Pencarian lagu sedang gangguan, coba lagi." — jangan bocorkan detail

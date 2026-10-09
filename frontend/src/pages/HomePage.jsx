@@ -327,6 +327,7 @@ export default function HomePage() {
       setMessage('');
       setSenderName('');
       setFoto(null);
+      setMusic(null);
       toast.success('Menfess terkirim! Menunggu persetujuan admin.');
     } catch (err) {
       const msg = err.response?.data?.error || 'Gagal mengirim menfes. Coba lagi.';

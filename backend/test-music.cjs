@@ -34,6 +34,10 @@ const LAGU = {
   duration: 213,
   thumb: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg',
 };
+// Thumb dari host SEMBARANGAN: kalau diterima, <img src>-nya akan di-fetch
+// browser admin setiap kali dashboard dibuka — beacon pelacakan (IP + waktu).
+// Host thumbnail sah dibatasi ke properti Google (ytimg/ggpht/googleusercontent).
+const LAGU_THUMB_LIAR = 'https://attacker.example.com/pixel.jpg';
 
 (async () => {
   process.env.PORT = '0';
@@ -51,23 +55,11 @@ const LAGU = {
 
   const USER = 'music-test-admin';
   const PASS = 'password-music-123';
-  await prisma.admin.deleteMany({ where: { username: USER } });
-  await prisma.admin.create({
-    data: { username: USER, password: await bcrypt.hash(PASS, 10) },
-  });
 
-  // Status awal situs sebelum test menyentuhnya — dipulihkan di finally.
+  // Baca status awal situs SEBELUM try (read-only, tidak memutasi apa pun;
+  // kalau bacaan ini gagal pun belum ada yang berubah untuk dipulihkan).
+  // Dipulihkan di finally berdasarkan nilai ini.
   const statusAwal = await prisma.siteSetting.findUnique({ where: { id: 'utama' } });
-  // Kasus submit butuh situs terbuka (tanpa ini semua submit dibalas 403).
-  // Pola yang sama dengan test-site.cjs: buka sementara hanya kalau perlu,
-  // pulihkan persis keadaan awal di finally.
-  if (!statusAwal || !statusAwal.isOpen) {
-    await prisma.siteSetting.upsert({
-      where: { id: 'utama' },
-      update: { isOpen: true },
-      create: { id: 'utama', isOpen: true },
-    });
-  }
 
   const idBuat = [];
 
@@ -99,6 +91,23 @@ const LAGU = {
   };
 
   try {
+    // Kasus submit butuh situs terbuka (tanpa ini semua submit dibalas 403).
+    // Pola yang sama dengan test-site.cjs: buka sementara hanya kalau perlu,
+    // pulihkan persis keadaan awal (statusAwal, dibaca di atas) di finally.
+    if (!statusAwal || !statusAwal.isOpen) {
+      await prisma.siteSetting.upsert({
+        where: { id: 'utama' },
+        update: { isOpen: true },
+        create: { id: 'utama', isOpen: true },
+      });
+    }
+    // Admin uji dibuat di sini (bukan sebelum try) supaya finally yang
+    // menghapusnya selalu berjalan walau setup gagal di tengah jalan.
+    await prisma.admin.deleteMany({ where: { username: USER } });
+    await prisma.admin.create({
+      data: { username: USER, password: await bcrypt.hash(PASS, 10) },
+    });
+
     console.log('── 1. login admin uji ──');
     let r = await reqJson('/api/auth/login', {
       method: 'POST',
@@ -164,6 +173,20 @@ const LAGU = {
     check('pesan error menyebut lagu/videoId',
       /lagu|videoId/i.test(r.body?.error || ''), r.body?.error);
     check('tidak ada baris baru untuk lagu rusak',
+      (await prisma.menfes.count()) === sebelumBaris,
+      `${sebelumBaris} -> ${await prisma.menfes.count()}`);
+
+    // ─── 6b. thumb dari host bebas -> 400 (anti beacon pelacakan) ────────────
+    console.log('\n── 6b. thumb host sembarangan -> 400 ──');
+    r = await reqJson('/api/menfes', {
+      method: 'POST',
+      body: {
+        message: 'menfes uji thumb liar',
+        music: { ...LAGU, thumb: LAGU_THUMB_LIAR },
+      },
+    });
+    check('thumb liar -> 400', r.status === 400, `HTTP ${r.status}`);
+    check('tidak ada baris baru untuk thumb liar',
       (await prisma.menfes.count()) === sebelumBaris,
       `${sebelumBaris} -> ${await prisma.menfes.count()}`);
 

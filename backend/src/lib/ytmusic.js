@@ -13,6 +13,13 @@
 const YTMusic = require('ytmusic-api');
 
 const ytm = new YTMusic();
+// Axios internal library default-nya timeout 0 (tanpa batas) — YouTube yang
+// menggantung akan menahan socket selamanya per pencarian. Dipasang di sini
+// (client dibuat sekali di konstruktor) supaya request ikut mati, bukan hanya
+// response-nya yang dibuang oleh Promise.race di controller.
+if (ytm.client && ytm.client.defaults) {
+  ytm.client.defaults.timeout = 10000;
+}
 let initSekali = null;
 
 function siapkan() {

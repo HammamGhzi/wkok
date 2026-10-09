@@ -79,7 +79,6 @@ model Menfes {
   // Instagram. NULL = tanpa lagu (semua baris lama).
   music Json?
 
-
   @@index([status])
   @@index([createdAt])
   @@index([igStatus])
