@@ -8,8 +8,8 @@ Repo: menfs/
 
 User boleh menempelkan satu lagu ke menfess-nya saat mengirim. Lagu ini
 **eksklusif untuk admin** — dipakai sebagai referensi saat review di
-dashboard, dengan preview 30 detik. Feed publik dan Instagram TIDAK
-menampilkan musik sama sekali.
+dashboard, dengan pemutaran lagu utuh lewat embed YouTube. Feed publik dan
+Instagram TIDAK menampilkan musik sama sekali.
 
 Keputusan yang sudah disepakati:
 
@@ -18,11 +18,18 @@ Keputusan yang sudah disepakati:
   hanya search + metadata; library Python `ytmusicapi` tidak diperlukan.
 - Library dipanggil **dari backend, bukan browser** — endpoint search jadi
   proxy, CORS/cookie tidak bocor ke klien.
-- Playback preview memakai **YouTube IFrame resmi**
-  (`youtube-nocookie.com/embed/...?autoplay=1&start=0&end=30`). Di sisi
-  user, iframe langsung ter-render **autoplay** begitu lagu dipilih dan
-  berhenti sendiri di detik ke-30; di dashboard admin tetap manual
-  (klik Putar). Tidak ada streaming/download audio di sisi kita.
+- Playback memakai **YouTube IFrame resmi**
+  (`youtube-nocookie.com/embed/...?autoplay=1&start=<posisi>`) yang selalu
+  dirender **tersembunyi (`sr-only`)** — TIDAK PERNAH ada wujud player
+  YouTube yang terlihat, jadi tampilan tidak pernah "berubah jadi
+  player". Satu implementasi untuk semua pemutar:
+  **`src/hooks/usePreviewLagu.jsx`** (jeda/lanjut, posisi, timer
+  berhenti di `duration` snapshot) dipakai MusicPicker (step 4 user)
+  dan blok Lagu Pilihan di ExportModal (admin). Lagu **diputar utuh
+  (tanpa `end`)**; kalau `duration` null → tanpa auto-stop. Tidak ada
+  streaming/download audio di sisi kita.
+  (Revisi: batas preview 30 detik DITINGGALKAN atas permintaan user —
+  "1 lagu utuh", berlaku untuk step 4 user DAN dashboard admin.)
 - Urutan wizard: **step 4 = Musik (opsional), step 5 = Foto (opsional)**.
 - Tidak di-push ke origin sampai user bilang push.
 
@@ -37,8 +44,9 @@ Backend: validasi format videoId + sanitasi judul/artist
         -> simpan snapshot di kolom JSON `music`
         |
         v
-Admin dashboard: blok musik di detail kartu
-   -> klik Putar -> iframe YouTube, berhenti sendiri di detik ke-30
+Admin dashboard: blok musik = INFO saja di detail kartu
+   -> buka Export IG -> kartu Lagu Pilihan -> klik icon putar
+      -> suara dari iframe tersembunyi, utuh dari awal (tanpa UI YouTube)
 Feed publik / IG: tanpa jejak musik (kolom tidak di-select)
 ```
 
@@ -91,13 +99,28 @@ jadi satu kolom JSON (bukan 4 kolom terpisah).
   (foto bergeser dari 4 ke 5).
 - Widget baru **MusicPicker** di step 4:
   - input search dengan debounce 400ms -> `GET /api/music/search`.
-  - daftar hasil: thumbnail + judul + artist + durasi; klik = pilih.
-  - state terpilih: kartu "TERPILIH" + tombol **Putar/Hentikan**,
-    **Ganti**, **Hapus** — pola blok Foto (Ganti/Hapus) dipakai ulang.
-    Preview autoplay saat dipilih (klik hasil = user gesture), dan
-    **berhenti — iframe dibuang — saat user tinggali step 4** lewat prop
-    `aktif={step === 4}` di HomePage, supaya audio tidak terus
-    menyiarkan dari container yang tersembunyi CSS.
+  - daftar hasil: thumbnail + judul + artist + durasi; klik = pilih
+    **langsung bunyi**, klik lagu lain = ganti (tanpa tombol Ganti).
+  - **Daftar hasil tidak pernah digantikan tampilan player YouTube.**
+    Pilihan tampil sebagai strip tipis di atas input: thumbnail 48px
+    (overlay icon SVG play/pause), judul/artist/durasi, tombol **Hapus**;
+    baris terpilih di daftar di-highlight.
+  - Audio bunyi dari iframe `youtube-nocookie` yang dirender **tersembunyi
+    (`sr-only`, bukan `display:none`)** selama state `putar` aktif:
+    `autoplay=1&start=<posisi>&rel=0` — **tanpa `end`, lagu diputar
+    utuh**. Pause = buang iframe + simpan posisi di ref; lanjut = mount
+    ulang `start=<posisi>`; timer internal (deps `[putar, value]`)
+    berhenti di `duration` snapshot sehingga icon balik ke "putar" dan
+    posisi direset saat durasi habis — kalau `duration` null, tanpa
+    auto-stop (user jeda sendiri). **berhenti — iframe dibuang — saat
+    user tinggali step 4** lewat prop `aktif={step === 4}` di HomePage,
+    supaya audio tidak terus menyiarkan dari container yang tersembunyi
+    CSS.
+  - Tombol **Hapus** hanya membuang pilihan; query + hasil sengaja
+    dipertahankan supaya user tinggal klik lagu lain.
+  - Logika bunyi (jeda/lanjut, posisi, timer, render iframe) diangkat ke
+    hook `src/hooks/usePreviewLagu.jsx` — dipakai bareng ExportModal
+    supaya cuma ada satu implementasi.
   - ke-gagalan search -> pesan "lagu lagi gangguan" tanpa merusak form.
   - step opsional: boleh dilewati tanpa konsekuensi.
 - Wizard mobile: dot `[1..5]`, "Lanjut" sampai `step < 5`, tombol KIRIM
@@ -110,12 +133,18 @@ jadi satu kolom JSON (bukan 4 kolom terpisah).
 ## Admin Dashboard
 
 - Blok musik di **area detail kartu** (bukan input caption IG):
-  thumbnail + judul + artist + tombol **Putar**.
-- Klik Putar -> mount iframe
-  `https://www.youtube-nocookie.com/embed/{videoId}?start=0&end=30&rel=0`
-  (berhenti sendiri di detik ke-30). Tanpa autoplay; iframe dibuang saat
-  blok ditutup/diganti agar tidak terus menyiarkan audio.
-- Baris tanpa `music` tidak menampilkan blok apa pun.
+  **MURNI INFO** — thumbnail + judul + artist + durasi. Tanpa tombol,
+  tanpa iframe/player (revisi user: "yang di luarnya ... info aja").
+- **Pemutaran pindah ke dalam ExportModal** (modul export IG): kartu
+  "Lagu Pilihan" di kolom controls, tepat sebelum blok Caption
+  Instagram, dengan **tampilan yang sama persis** (thumb + judul +
+  artist + durasi) + satu icon putar/jeda 44px. Bunyi dari iframe
+  YouTube tersembunyi (`sr-only`, hook `usePreviewLagu`) — tanpa UI
+  player YouTube — lagu utuh, jeda/lanjut menyimpan posisi, tutup
+  modal -> komponen unmount -> audio mati.
+- Musik **tidak pernah ikut** ke caption, gambar, maupun post IG.
+- Baris tanpa `music` tidak menampilkan blok apa pun (di kartu maupun
+  di modal).
 
 ## Error Handling
 
@@ -139,17 +168,28 @@ jadi satu kolom JSON (bukan 4 kolom terpisah).
   6. API publik `getApprovedMenfes` **tidak** membawa field `music`.
   7. API admin membawa field `music`.
   8. baris uji dibersihkan di `finally`.
-- Frontend: verifikasi manual via browser (pilih lagu -> autoplay
-  berhenti di ~30 detik -> Hentikan/Putar/Ganti/Hapus -> pindah step
-  bunyi mati -> submit -> dashboard admin -> klik Putar).
+- Frontend: verifikasi manual via browser (klik lagu -> **daftar tetap
+  tampil** + audio bunyi dari iframe tersembunyi dan jalan utuh sampai
+  durasi habis -> jeda/lanjut via icon thumbnail (`start=<posisi>`) ->
+  klik lagu lain ganti dari nol -> Hapus -> pindah step bunyi mati ->
+  submit -> kartu admin berupa info saja (tanpa tombol) -> buka Export
+  IG -> klik icon putar di kartu Lagu Pilihan (tanpa UI YouTube, utuh)
+  -> tutup modal bunyi mati).
 
 ## Batasan (By Design)
 
 - Tidak ada audio streaming sendiri, tidak ada download, tidak ada
   penyimpanan file lagu — hanya `videoId` + snapshot teks.
-- Autoplay **hanya di step 4 sisi user**, dibatasi `end=30` (berhenti
-  sendiri) dan dibuang saat tinggalkan step 4. Dashboard admin tetap
-  tanpa autoplay — klik Putar manual.
+- Autoplay **hanya di step 4 sisi user** dan dibuang saat tinggalkan
+  step 4. Playback **utuh tanpa batas 30 detik** (revisi user); detik
+  berhenti otomatis dihitung dari `duration` snapshot (fallback: tanpa
+  auto-stop). Dashboard admin tetap tanpa autoplay — klik Putar manual.
+- UI sisi user: **daftar lagu selalu tampil** — tidak pernah ada player
+  YouTube hitam yang menggantikannya; tidak ada tombol Ganti (klik lagu
+  lain = ganti).
+- Satu-satunya tempat memutar lagu: step 4 user dan kartu Lagu Pilihan
+  di dalam ExportModal — dua-duanya lewat iframe tersembunyi, jadi
+  tampilan tidak pernah berubah jadi player YouTube.
 - Search di belakang rate-limit global (tidak bisa dipakai untuk membanjir
   YouTube dari IP server).
 - Library unofficial: bisa pecah kalo YouTube mengubah internal API;

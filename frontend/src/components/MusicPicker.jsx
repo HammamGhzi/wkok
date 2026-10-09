@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { musicAPI } from '../api';
+import usePreviewLagu from '../hooks/usePreviewLagu';
 
 function fmtDurasi(d) {
   if (typeof d !== 'number' || !Number.isFinite(d)) return null;
@@ -7,28 +8,43 @@ function fmtDurasi(d) {
 }
 
 // ── Step "Musik" pada wizard menfess ─────────────────────────────────────────
-// Cari lagu lewat backend, pilih satu hasil. Saat dipilih, preview 30 detik
-// langsung bunyi lewat embed resmi YouTube (autoplay, berhenti sendiri di
-// detik ke-30) — kalau browser memblokir autoplay, iframe tetap tampil dengan
-// tombol play bawaan YouTube. Pilihan tetap murni referensi admin di
-// dashboard; tidak ada audio yang lewat server kita.
+// Cari lagu lewat backend, klik satu hasil -> langsung bunyi. Tampilan TIDAK
+// PERNAH berpindah ke player YouTube: daftar pencarian tetap di layar, audio
+// bunyi dari iframe resmi YouTube (youtube-nocookie) yang dirender tersembunyi
+// (sr-only) selama state `putar` aktif — autoplay = gesture klik, dan lagu
+// diputar UTUH (tanpa batas `end`), berhenti sendiri saat durasi habis.
+// Kontrol jeda/lanjut cuma satu: icon SVG di thumbnail strip lagu terpilih.
+// Pilihan tetap murni referensi admin di dashboard; tidak ada audio yang
+// lewat server kita.
 export default function MusicPicker({ value, onChange, disabled = false, aktif = true }) {
   const [q, setQ] = useState('');
   const [hasil, setHasil] = useState([]);
   const [cari, setCari] = useState(false);
   const [gagal, setGagal] = useState(false);
   const [kosong, setKosong] = useState(false);
-  const [putar, setPutar] = useState(false);
   const seq = useRef(0);
 
-  // Lepas player (dan matikan audionya) saat step musik ditinggalkan ATAU
-  // pilihan dibersihkan — tidak pernah ada audio ngehidden di belakang form.
-  useEffect(() => {
-    if (!aktif) setPutar(false);
-  }, [aktif]);
-  useEffect(() => {
-    if (!value) setPutar(false);
-  }, [value]);
+  // Durasi lagu dari snapshot pencarian (detik) — batas berhenti sendiri
+  // di dalam hook. Kalau null (duration hilang), tanpa auto-stop.
+  const durasiDetik =
+    value && typeof value.duration === 'number' && Number.isFinite(value.duration)
+      ? value.duration
+      : null;
+
+  // Seluruh logika bunyi (jeda/lanjut/posisi/timer/iframe) ada di hook —
+  // dipakai bareng ExportModal supaya cuma ada SATU implementasi.
+  const { putar, toggle, ulang, player } = usePreviewLagu({
+    videoId: value ? value.videoId : null,
+    judul: value ? value.title : '',
+    durasiDetik,
+    aktif,
+  });
+
+  // Pilih lagu di daftar: posisi direset, langsung bunyi dari detik 0.
+  const pilihLagu = (s) => {
+    onChange(s);
+    ulang();
+  };
 
   // Debounce 400ms: mengetik "tulus manusia baik" cukup memicu SATU request
   // (yang terakhir), bukan satu per ketukan. `seq` menjamin respons
@@ -83,147 +99,142 @@ export default function MusicPicker({ value, onChange, disabled = false, aktif =
       </div>
 
       <p className="text-[11px] text-ink-500 dark:text-parchment-400 font-mono leading-relaxed">
-        Pilih satu lagu sebagai referensi admin — preview 30 detik langsung
-        diputar. Cuma judul dan thumbnail yang disimpan — tidak ada audio yang
-        diunggah ke server.
+        Cari musik yang diinginkan olehmu.
       </p>
 
-      {value ? (
-        <div className="rounded-xl border border-parchment-300 dark:border-ink-600 overflow-hidden">
-          <div className="space-y-2 p-2.5 bg-parchment-100 dark:bg-ink-800">
-            {/* Player 30 detik — autoplay karena memilih lagu = gesture user;
-                kalau browser tetap memblokir, iframe punya tombol play bawaan.
-                end=30: berhenti sendiri di detik ke-30. */}
-            {putar && (
-              <iframe
-                className="w-full aspect-video rounded-lg bg-ink-900"
-                src={`https://www.youtube-nocookie.com/embed/${value.videoId}?autoplay=1&start=0&end=30&rel=0`}
-                title={`Preview ${value.title}`}
-                allow="autoplay; encrypted-media; picture-in-picture"
-                allowFullScreen
+      {/* Strip lagu terpilih — tampilan TIDAK pernah berganti ke player
+          YouTube; daftar pencarian tetap di bawah, audio bunyi dari iframe
+          tersembunyi (sr-only) yang dirender saat `putar` aktif. */}
+      {value && (
+        <div className="flex items-center gap-3 p-2.5 rounded-xl border border-brand-600/40 dark:border-brand-500/40 bg-parchment-100 dark:bg-ink-800">
+          <div className="relative w-12 h-12 shrink-0">
+            {value.thumb ? (
+              <img
+                src={value.thumb}
+                alt=""
+                className="w-12 h-12 rounded-lg object-cover bg-parchment-200 dark:bg-ink-900"
               />
+            ) : (
+              <div className="w-12 h-12 rounded-lg bg-parchment-200 dark:bg-ink-900" />
             )}
-            <div className="flex items-center gap-3">
-              {!putar &&
-                (value.thumb ? (
-                  <img
-                    src={value.thumb}
-                    alt=""
-                    className="w-12 h-12 rounded-lg object-cover bg-parchment-200 dark:bg-ink-900"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-lg bg-parchment-200 dark:bg-ink-900" />
-                ))}
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink-900 dark:text-parchment-100 truncate">
-                  {value.title}
-                </p>
-                <p className="text-xs text-ink-500 dark:text-parchment-400 truncate">
-                  {value.artist}
-                  {durasi ? ` · ${durasi}` : ''}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2 p-2 bg-parchment-100 dark:bg-ink-800 border-t border-parchment-300 dark:border-ink-600">
-            {/* Putar/Hentikan: iframe dirender dibuang — audio ikut mati. */}
+            {/* Overlay putar/jeda di atas thumbnail — satu-satunya kontrol audio */}
             <button
               type="button"
-              onClick={() => setPutar((p) => !p)}
+              onClick={toggle}
               disabled={disabled}
-              className="flex-1 text-xs font-mono font-semibold py-2 rounded-lg border border-brand-600 text-brand-600 dark:text-brand-400 hover:bg-brand-600/10 transition-colors"
+              aria-label={putar ? 'Jeda preview' : 'Putar preview'}
+              className="absolute inset-0 w-12 h-12 rounded-lg flex items-center justify-center bg-ink-900/55 hover:bg-ink-900/70 transition-colors"
             >
-              {putar ? 'Hentikan' : 'Putar'}
-            </button>
-            {/* Ganti: kembali ke daftar hasil dengan query yang masih ada. */}
-            <button
-              type="button"
-              onClick={() => onChange(null)}
-              disabled={disabled}
-              className="flex-1 text-xs font-mono font-semibold py-2 rounded-lg border border-parchment-300 dark:border-ink-600 text-ink-700 dark:text-parchment-300 hover:bg-parchment-200 dark:hover:bg-ink-700 transition-colors"
-            >
-              Ganti
-            </button>
-            {/* Hapus: bersihkan pilihan SEKALIGUS query dan hasil. */}
-            <button
-              type="button"
-              onClick={() => {
-                onChange(null);
-                setQ('');
-                setHasil([]);
-              }}
-              disabled={disabled}
-              className="flex-1 text-xs font-mono font-semibold py-2 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-            >
-              Hapus
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <input
-            id="music-cari"
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Cari lagu, mis. tulus manusia baik"
-            disabled={disabled}
-            maxLength={100}
-            autoComplete="off"
-            className="input-field font-mono text-sm"
-          />
-
-          {gagal && (
-            <p className="text-xs font-mono text-red-500 dark:text-red-400">
-              Lagu lagi gangguan. Coba lagi beberapa saat.
-            </p>
-          )}
-          {cari && (
-            <p className="text-xs font-mono text-ink-400 dark:text-parchment-400">Mencari...</p>
-          )}
-          {!cari && !gagal && kosong && (
-            <p className="text-xs font-mono text-ink-400 dark:text-parchment-400">
-              Lagu tidak ditemukan. Coba kata kunci lain.
-            </p>
-          )}
-
-          <ul className="space-y-1.5 max-h-56 overflow-y-auto">
-            {hasil.map((s) => (
-              <li key={s.videoId}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Pilih lagu = langsung bunyi (autoplay = gesture klik).
-                    onChange(s);
-                    setPutar(true);
-                  }}
-                  disabled={disabled}
-                  className="w-full flex items-center gap-3 p-2 rounded-lg border border-parchment-300 dark:border-ink-600 text-left hover:border-brand-500 hover:bg-parchment-200/50 dark:hover:bg-ink-700/50 transition-colors"
+              {putar ? (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                  className="w-5 h-5 text-parchment-100"
                 >
-                  {s.thumb ? (
-                    <img
-                      src={s.thumb}
-                      alt=""
-                      className="w-10 h-10 rounded-md object-cover bg-parchment-200 dark:bg-ink-900 shrink-0"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-md bg-parchment-200 dark:bg-ink-900 shrink-0" />
-                  )}
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-semibold text-ink-900 dark:text-parchment-100 truncate">
-                      {s.title}
-                    </span>
-                    <span className="block text-[11px] text-ink-500 dark:text-parchment-400 truncate">
-                      {s.artist}
-                      {fmtDurasi(s.duration) ? ` · ${fmtDurasi(s.duration)}` : ''}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+              ) : (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                  className="w-5 h-5 text-parchment-100 translate-x-[1px]"
+                >
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 dark:text-parchment-100 truncate">
+              {value.title}
+            </p>
+            <p className="text-xs text-ink-500 dark:text-parchment-400 truncate">
+              {value.artist}
+              {durasi ? ` · ${durasi}` : ''}
+            </p>
+          </div>
+          {/* Hapus: buang pilihan; daftar hasil dan query sengaja
+              dipertahankan supaya user tinggal klik lagu lain. */}
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            disabled={disabled}
+            className="shrink-0 text-xs font-mono font-semibold px-3 py-2 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+          >
+            Hapus
+          </button>
         </div>
       )}
+
+      {/* Player audio tersembunyi dari hook (tanpa `end`: lagu diputar utuh) */}
+      {player}
+
+      <div className="space-y-2">
+        <input
+          id="music-cari"
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Cari lagu, mis. tulus manusia baik"
+          disabled={disabled}
+          maxLength={100}
+          autoComplete="off"
+          className="input-field font-mono text-sm"
+        />
+
+        {gagal && (
+          <p className="text-xs font-mono text-red-500 dark:text-red-400">
+            Lagu lagi gangguan. Coba lagi beberapa saat.
+          </p>
+        )}
+        {cari && (
+          <p className="text-xs font-mono text-ink-400 dark:text-parchment-400">Mencari...</p>
+        )}
+        {!cari && !gagal && kosong && (
+          <p className="text-xs font-mono text-ink-400 dark:text-parchment-400">
+            Lagu tidak ditemukan. Coba kata kunci lain.
+          </p>
+        )}
+
+        <ul className="space-y-1.5 max-h-56 overflow-y-auto">
+          {hasil.map((s) => (
+            <li key={s.videoId}>
+              <button
+                type="button"
+                onClick={() => pilihLagu(s)}
+                disabled={disabled}
+                className={`w-full flex items-center gap-3 p-2 rounded-lg border text-left transition-colors ${
+                  value && value.videoId === s.videoId
+                    ? 'border-brand-500 bg-brand-600/10 dark:bg-brand-500/15'
+                    : 'border-parchment-300 dark:border-ink-600 hover:border-brand-500 hover:bg-parchment-200/50 dark:hover:bg-ink-700/50'
+                }`}
+              >
+                {s.thumb ? (
+                  <img
+                    src={s.thumb}
+                    alt=""
+                    className="w-10 h-10 rounded-md object-cover bg-parchment-200 dark:bg-ink-900 shrink-0"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-md bg-parchment-200 dark:bg-ink-900 shrink-0" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-semibold text-ink-900 dark:text-parchment-100 truncate">
+                    {s.title}
+                  </span>
+                  <span className="block text-[11px] text-ink-500 dark:text-parchment-400 truncate">
+                    {s.artist}
+                    {fmtDurasi(s.duration) ? ` · ${fmtDurasi(s.duration)}` : ''}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { TEMPLATES, getTemplateById, parseTemplateFromMenfes } from '../config/templates';
 import { renderMenfessToCanvas, CANVAS_SIZE } from '../utils/drawMenfessCanvas';
 import { adminAPI, urlAset } from '../api';
+import usePreviewLagu from '../hooks/usePreviewLagu';
 
 // Batas caption mengikut Instagram. Menyalin angka dari backend lebih baik
 // daripada menebak: kalau backend yang menolak, admin sudah terlanjur mengetik
@@ -317,6 +318,24 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
       setPosting(false);
     }
   }
+
+  // ── Lagu pilihan ──────────────────────────────────────────────────────────
+  // Pemutar tanpa UI player: bunyi dari iframe tersembunyi (hook yang sama
+  // dengan MusicPicker). Komponen unmount saat modal ditutup -> audio ikut
+  // mati. Lagu TIDAK ikut ke caption/gambar/post IG — blok ini cuma layar.
+  const durasiLagu =
+    menfes?.music && typeof menfes.music.duration === 'number' && Number.isFinite(menfes.music.duration)
+      ? menfes.music.duration
+      : null;
+  const durasiTeks =
+    durasiLagu != null
+      ? `${Math.floor(durasiLagu / 60)}:${String(durasiLagu % 60).padStart(2, '0')}`
+      : null;
+  const { putar, toggle, player } = usePreviewLagu({
+    videoId: menfes?.music?.videoId || null,
+    judul: menfes?.music?.title || '',
+    durasiDetik: durasiLagu,
+  });
 
   // Menfes yang belum APPROVED tidak boleh tayang, jadi tombolnya dimatikan
   // di sini juga, bukan hanya ditolak server. Server tetap menjaganya; ini
@@ -758,6 +777,57 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
                   </button>
                 </>
               )}
+            </div>
+          )}
+
+          {/* Lagu pilihan — info (thumb, judul, artist, durasi) + icon
+              putar/jeda. Tampilannya sama dengan blok info di kartu detail;
+              audionya dari iframe tersembunyi sehingga TIDAK ada wujud player
+              YouTube yang muncul. Lagu tidak pernah ikut ke caption/gambar. */}
+          {menfes?.music && (
+            <div className="bg-ink-800 border border-ink-600 rounded-xl p-3">
+              <p className="text-[10px] font-mono font-bold text-ink-200 tracking-widest uppercase mb-2">
+                Lagu Pilihan
+              </p>
+              <div className="flex items-center gap-3">
+                {menfes.music.thumb ? (
+                  <img
+                    src={menfes.music.thumb}
+                    alt=""
+                    className="w-14 h-14 rounded-lg object-cover border border-ink-600 bg-ink-900 shrink-0"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-lg border border-ink-600 bg-ink-900 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm text-parchment-200 font-semibold truncate">
+                    {menfes.music.title}
+                  </p>
+                  <p className="text-[11px] text-ink-300 truncate">
+                    {menfes.music.artist}
+                    {durasiTeks ? ` · ${durasiTeks}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggle}
+                  aria-label={putar ? 'Hentikan lagu' : 'Putar lagu'}
+                  title={putar ? 'Hentikan' : 'Putar'}
+                  className="shrink-0 w-11 h-11 rounded-lg border border-brand-600 text-brand-400 hover:bg-brand-600/10 flex items-center justify-center transition-colors touch-manipulation"
+                >
+                  {putar ? (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="6" y="5" width="4" height="14" rx="1" />
+                      <rect x="14" y="5" width="4" height="14" rx="1" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 translate-x-[1px]" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {player}
             </div>
           )}
 
