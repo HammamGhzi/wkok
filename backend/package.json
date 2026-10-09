@@ -27,8 +27,9 @@
     "test:approve": "node test-approve.cjs",
     "test:site": "node test-site.cjs",
     "test:foto": "node test-foto.cjs",
+    "test:music": "node test-music.cjs",
     "test:ig-live": "node scripts/test-ig-publish.cjs",
-    "test:all": "npm run security-check && npm run test:audit && npm run test:password-length && npm run test:revocation && npm run test:auth-cache && npm run test:perf && npm run test:admin-perf && npm run test:ig && npm run test:ig-publish && npm run test:ig-route && npm run test:approve && npm run test:site && npm run test:foto",
+    "test:all": "npm run security-check && npm run test:audit && npm run test:password-length && npm run test:revocation && npm run test:auth-cache && npm run test:perf && npm run test:admin-perf && npm run test:ig && npm run test:ig-publish && npm run test:ig-route && npm run test:approve && npm run test:site && npm run test:foto && npm run test:music",
     "prove:bcrypt-truncation": "node scripts/prove-bcrypt-truncation.cjs",
     "prove:token-revocation": "node scripts/prove-token-revocation.cjs",
     "sec:forensics": "node sec-forensics.mjs"
