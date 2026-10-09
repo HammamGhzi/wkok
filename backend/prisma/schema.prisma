@@ -72,6 +72,14 @@ model Menfes {
   // jalur publish Instagram yang membacanya.
   fotoUrl String?
 
+  // ── Lagu pilihan pengirim (opsional) ───────────────────────────────────────
+  // Snapshot metadata hasil pencarian: { videoId, title, artist, duration,
+  // thumb }. HANYA dibaca dashboard admin (preview embed YouTube resmi 30
+  // detik); TIDAK PERNAH ikut response API publik maupun caption/postingan
+  // Instagram. NULL = tanpa lagu (semua baris lama).
+  music Json?
+
+
   @@index([status])
   @@index([createdAt])
   @@index([igStatus])
