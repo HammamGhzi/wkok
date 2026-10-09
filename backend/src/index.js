@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth');
 const menfesRoutes = require('./routes/menfes');
 const adminRoutes = require('./routes/admin');
 const siteRoutes = require('./routes/site');
+const musicRoutes = require('./routes/music');
 const authMiddleware = require('./middleware/auth');
 const { router: telegramRouter, registerTelegramCallbacks } = require('./routes/telegram');
 const { initBot } = require('./services/telegramBot');
@@ -113,6 +114,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/menfes', menfesRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/site', siteRoutes);
+app.use('/api/music', musicRoutes);
 app.use('/api/telegram', telegramRouter);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
