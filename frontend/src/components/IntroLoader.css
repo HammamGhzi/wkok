@@ -80,9 +80,8 @@
   width: 42px;
   height: 42px;
   margin: 0 auto 9px;
-  border: 2px solid #e9c98f;
-  border-radius: 50%;
-  object-fit: cover;
+  border-radius: 8px;
+  object-fit: contain;
 }
 
 .intro-loader__letter-line {

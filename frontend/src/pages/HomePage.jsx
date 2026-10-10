@@ -54,7 +54,11 @@ function HeaderAtas({ darkMode, setDarkMode }) {
     <header className="bg-white/95 dark:bg-ink-900/95 backdrop-blur-sm border-b border-parchment-300 dark:border-ink-600 sticky top-0 z-10">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <img src="/template/logo.jpg" alt="Logo" className="w-7 h-7 rounded-full border border-parchment-300 dark:border-ink-500 object-cover" />
+          <img
+            src={darkMode ? '/template/logo-light.png' : '/template/logo-dark.png'}
+            alt="Logo"
+            className="w-7 h-7 rounded-lg object-contain"
+          />
           <h1 className="text-lg sm:text-xl font-extrabold tracking-tight leading-none">
             <span className="text-ink-900 dark:text-parchment-200">HARKAT</span>{' '}
             <span className="text-brand-600 relative">

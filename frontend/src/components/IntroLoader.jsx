@@ -23,7 +23,8 @@ export default function IntroLoader() {
     <div className={`intro-loader${closing ? ' intro-loader--closing' : ''}`} role="status" aria-label="Membuka surat">
       <div className="intro-loader__scene" aria-hidden="true">
         <div className="intro-loader__letter">
-          <img className="intro-loader__logo" src="/template/logo.jpg" alt="Logo Harkat Nekat" />
+          {/* Logo crimson: surat di intro selalu krem, jadi logo cream tidak akan terlihat */}
+          <img className="intro-loader__logo" src="/template/logo-dark.png" alt="Logo Harkat Nekat" />
           <span className="intro-loader__letter-line" />
           <span className="intro-loader__letter-line intro-loader__letter-line--short" />
           <span className="intro-loader__letter-heart">♥</span>
