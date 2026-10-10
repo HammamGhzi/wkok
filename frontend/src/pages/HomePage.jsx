@@ -54,17 +54,14 @@ function HeaderAtas({ darkMode, setDarkMode }) {
     <header className="bg-white/95 dark:bg-ink-900/95 backdrop-blur-sm border-b border-parchment-300 dark:border-ink-600 sticky top-0 z-10">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <img
-            src={darkMode ? '/template/logo-light.png' : '/template/logo-dark.png'}
-            alt="Logo"
-            className="w-7 h-7 rounded-lg object-contain"
-          />
-          <h1 className="text-lg sm:text-xl font-extrabold tracking-tight leading-none">
-            <span className="text-ink-900 dark:text-parchment-200">HARKAT</span>{' '}
-            <span className="text-brand-600 relative">
-              NEKATT
-              <span className="absolute -bottom-0.5 left-0 right-0 h-[2px] bg-brand-700 rounded-full" />
-            </span>
+          {/* Wordmark logo jadi pengganti teks judul: lebar-lebar, jadi tingginya
+              yang dikunci supaya proporsinya ikut menyesuaikan */}
+          <h1 className="leading-none">
+            <img
+              src={darkMode ? '/template/logo-light.png' : '/template/logo-dark.png'}
+              alt="Harkat Nekatt"
+              className="h-8 sm:h-9 w-auto object-contain"
+            />
           </h1>
         </div>
         <div className="flex items-center gap-2">

@@ -77,10 +77,9 @@
 
 .intro-loader__logo {
   display: block;
-  width: 42px;
-  height: 42px;
+  width: 78px;
+  height: auto;
   margin: 0 auto 9px;
-  border-radius: 8px;
   object-fit: contain;
 }
 
