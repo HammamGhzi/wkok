@@ -65,16 +65,26 @@ function HeaderAtas({ darkMode, setDarkMode }) {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          {/* Ikon tema: bulan saat mode terang (ajakan ke gelap), matahari saat
+              mode gelap. Ikon, bukan teks — label tetap ada untuk pembaca layar. */}
           <button
             type="button"
             onClick={() => setDarkMode(v => !v)}
-            className="flex items-center gap-1.5 text-[11px] font-mono text-ink-500 dark:text-ink-200 bg-parchment-100 dark:bg-ink-800 border border-parchment-300 dark:border-ink-400 px-2.5 py-1 rounded-full"
+            aria-label={darkMode ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'}
+            title={darkMode ? 'Mode terang' : 'Mode gelap'}
+            className="flex items-center justify-center w-8 h-8 text-ink-500 dark:text-parchment-200 bg-parchment-100 dark:bg-ink-800 border border-parchment-300 dark:border-ink-400 rounded-full hover:border-brand-600 dark:hover:border-brand-600 transition-colors"
           >
-            {darkMode ? 'Light' : 'Dark'}
+            {darkMode ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+            )}
           </button>
-          <span className="text-[11px] font-mono text-ink-500 dark:text-ink-200 bg-parchment-100 dark:bg-ink-800 border border-parchment-300 dark:border-ink-400 px-2.5 py-1 rounded-full">
-            Menfess Kampus
-          </span>
         </div>
       </div>
     </header>
