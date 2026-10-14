@@ -21,7 +21,7 @@ Folder ini menyimpan file background template yang dapat dipilih oleh pengguna s
    - Hanya ada satu nama file (tanpa twin bergaya spasi seperti template 1 & 2), jadi `fallbackSrc` di config sengaja `null`
    - Label `Dikirim oleh:` sudah tercetak di gambar, jadi nama pengirim digambar di sebelah kanannya pada baseline yang sama
 
-`logo.jpg` bukan template - itu favicon dan header logo aplikasi.
+File merek di folder ini (`favicon-logo.png`, `logo-dark.png`, `logo-light.png`, `og-card.png`) bukan template menfess. Logo lama `logo.jpg` sudah dihapus — jangan ditambahin lagi.
 
 Catatan: urutan template di `src/config/templates.js` itu berarti. Entri pertama
 menjadi default seluruh app, jadi template yang dihapus dari atas akan otomatis
