@@ -49,11 +49,24 @@ const auditLines = () =>
   const bcrypt = require('bcryptjs');
   const prisma = new PrismaClient();
 
+  // Status awal situs sebelum test menyentuhnya — dipulihkan di blok
+  // bersih-bersih dekat akhir file (skrip ini linear, tanpa finally).
+  const statusAwal = await prisma.siteSetting.findUnique({ where: { id: 'utama' } });
+
   const USER = 'audit-test-admin';
   const PASS = 'password-audit-123';
   await prisma.admin.deleteMany({ where: { username: USER } });
   await prisma.admin.create({
     data: { username: USER, password: await bcrypt.hash(PASS, 10) },
+  });
+
+  // Submit menfes (bagian 4) butuh situs terbuka: paksa mode 'buka'
+  // sementara (mode 'auto' bawaan bisa sedang tertutup di luar jam buka —
+  // sakelar kini bertiga, isOpen bukan penentu status lagi).
+  await prisma.siteSetting.upsert({
+    where: { id: 'utama' },
+    update: { mode: 'buka' },
+    create: { id: 'utama', mode: 'buka' },
   });
 
   let n = 0;
@@ -230,6 +243,16 @@ const auditLines = () =>
       } catch { return false; }
     })(), `${lines.length} baris`);
 
+  // Pulihkan keadaan situs persis seperti awal (lihat statusAwal di atas).
+  if (statusAwal) {
+    await prisma.siteSetting.upsert({
+      where: { id: 'utama' },
+      update: { isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
+      create: { id: 'utama', isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
+    });
+  } else {
+    await prisma.siteSetting.deleteMany({ where: { id: 'utama' } });
+  }
   await prisma.admin.deleteMany({ where: { username: USER } });
   server.close();
   await prisma.$disconnect();

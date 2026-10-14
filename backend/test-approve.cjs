@@ -36,6 +36,9 @@ const check = (name, pass, extra = '') => {
   const bcrypt = require('bcryptjs');
   const prisma = new PrismaClient();
 
+  // Status awal situs sebelum test menyentuhnya — dipulihkan di finally.
+  const statusAwal = await prisma.siteSetting.findUnique({ where: { id: 'utama' } });
+
   const USER = 'approve-test-admin';
   const PASS = 'password-approve-123';
   await prisma.admin.deleteMany({ where: { username: USER } });
@@ -60,6 +63,15 @@ const check = (name, pass, extra = '') => {
 
   let menfesId = null;
   try {
+    // Submit menfes butuh situs terbuka: paksa mode 'buka' sementara (mode
+    // 'auto' bawaan bisa sedang tertutup di luar jam buka — sakelar kini
+    // bertiga, isOpen bukan penentu status lagi), dipulihkan di finally.
+    await prisma.siteSetting.upsert({
+      where: { id: 'utama' },
+      update: { mode: 'buka' },
+      create: { id: 'utama', mode: 'buka' },
+    });
+
     // ─── 1. login ────────────────────────────────────────────────────────────
     console.log('── 1. login admin uji ──');
     let r = await req('/api/auth/login', {
@@ -122,7 +134,16 @@ const check = (name, pass, extra = '') => {
     check('igMediaId tetap null setelah approve',
       sebelum.igMediaId === null, String(sebelum.igMediaId));
   } finally {
-    // ─── bersihkan ─────────────────────────────────────────────────────────
+    // ─── bersihkan: pulihkan keadaan situs persis seperti awal ──────────────
+    if (statusAwal) {
+      await prisma.siteSetting.upsert({
+        where: { id: 'utama' },
+        update: { isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
+        create: { id: 'utama', isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
+      });
+    } else {
+      await prisma.siteSetting.deleteMany({ where: { id: 'utama' } });
+    }
     if (menfesId) {
       await prisma.menfes.deleteMany({ where: { id: menfesId } });
     }

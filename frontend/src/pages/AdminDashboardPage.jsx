@@ -144,24 +144,27 @@ export default function AdminDashboardPage() {
       .catch(() => {});
   }, []);
 
-  // Toggle buka/tutup menfess untuk publik.
-  //
-  // Ditulis optimis: tampilan berubah duluan, request menyusul. Admin menekan
-  // tombol kecil dengan harapan hasil langsung terlihat — kalau ternyata gagal,
+  // Set mode buka/tutup menfess: 'auto' (ikut jadwal), 'buka' (paksa), atau
+  // 'tutup' (paksa). Ditulis optimis: posisi sakelar berubah duluan, request
+  // menyusul. Balasan server membawa `open` yang sudah dihitung ulang (untuk
+  // mode auto hasilnya tergantung jam saat itu — hanya server yang tahu),
+  // jadi status efektif ikut disinkronkan dari situ. Kalau ternyata gagal,
   // tampilan dikembalikan dan pesan error muncul, jadi tidak pernah ada
   // indikator hijau yang berbohong tanpa penjelasan.
-  async function handleToggleSitus() {
-    if (!situs || toggleSitus) return;
-    const buka = !situs.open;
+  async function handleSetMode(mode) {
+    if (!situs || toggleSitus || situs.mode === mode) return;
     const sebelum = situs;
-    setSitus({ ...situs, open: buka });
+    setSitus({ ...situs, mode });
     setToggleSitus(true);
     try {
-      await adminAPI.setSiteOpen(buka);
+      const res = await adminAPI.setSiteMode(mode);
+      setSitus((kini) => ({ ...kini, mode: res.data.mode, open: res.data.open }));
       toast.success(
-        buka
-          ? 'Menfess DIBUKA — publik bisa mengirim lagi.'
-          : 'Menfess DITUTUP — publik melihat layar tutup.'
+        mode === 'auto'
+          ? 'Balik ke AUTO — buka/tutup ikut jadwal jam buka.'
+          : mode === 'buka'
+            ? 'Menfess DIBUKA paksa — menang atas jadwal sampai kembali ke Auto.'
+            : 'Menfess DITUTUP paksa — publik lihat layar tutup sampai kembali ke Auto.'
       );
     } catch (err) {
       setSitus(sebelum);
@@ -278,28 +281,21 @@ export default function AdminDashboardPage() {
 
           {/* Right */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Sakelar buka/tutup menfess — posisi sakelar inilah yang
-                dilihat publik lewat GET /api/site/status. Label = kondisi
-                SAAT INI, bukan aksi, supaya tidak ambigu saat dibaca cepat. */}
-            <button
-              type="button"
-              onClick={handleToggleSitus}
-              disabled={!situs || toggleSitus}
-              aria-pressed={situs ? !situs.open : undefined}
+            {/* Titik warna = status EFEKTIF sekarang (hasil akhir, sudah
+                termasuk override admin), bukan posisi sakelar. */}
+            <span
+              className={`flex items-center gap-1.5 text-[11px] font-mono font-semibold ${
+                !situs ? 'text-ink-400' : situs.open ? 'text-emerald-300' : 'text-red-300'
+              }`}
               title={
                 !situs
                   ? 'Status belum dimuat'
-                  : situs.open
-                    ? 'Klik untuk menutup menfess bagi publik'
-                    : 'Klik untuk membuka menfess bagi publik'
+                  : situs.mode === 'auto'
+                    ? 'Mode auto: sedang mengikuti jadwal jam buka'
+                    : situs.mode === 'buka'
+                      ? 'Dibuka paksa admin (override jadwal)'
+                      : 'Ditutup paksa admin (override jadwal)'
               }
-              className={`flex items-center gap-1.5 text-xs font-mono font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors ${
-                !situs
-                  ? 'text-ink-400 border-ink-700 opacity-60 cursor-wait'
-                  : situs.open
-                    ? 'text-emerald-300 border-emerald-800/60 bg-emerald-950/40 hover:border-emerald-600 hover:text-emerald-200'
-                    : 'text-red-300 border-red-800/60 bg-red-950/40 hover:border-red-600 hover:text-red-200'
-              }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
@@ -307,7 +303,57 @@ export default function AdminDashboardPage() {
                 }`}
               />
               {situs ? (situs.open ? 'BUKA' : 'TUTUP') : '…'}
-            </button>
+            </span>
+
+            {/* Sakelar tiga posisi: Auto = ikut jadwal (08-10, 12-14,
+                16-21 WIB), Buka/Tutup = paksa admin — menang atas jadwal
+                sampai admin sendiri mengembalikan ke Auto. Posisi sakelar
+                inilah yang dilihat publik lewat GET /api/site/status. */}
+            <div
+              role="group"
+              aria-label="Mode buka tutup menfess"
+              className="flex items-center border border-ink-700 rounded-lg overflow-hidden"
+            >
+              {[
+                {
+                  nilai: 'auto',
+                  label: 'Auto',
+                  judul: 'Otomatis ikut jadwal jam buka: 08.00-10.00, 12.00-14.00, 16.00-21.00',
+                },
+                {
+                  nilai: 'buka',
+                  label: 'Buka',
+                  judul: 'Paksa buka — menang atas jadwal sampai dikembalikan ke Auto',
+                },
+                {
+                  nilai: 'tutup',
+                  label: 'Tutup',
+                  judul: 'Paksa tutup — menang atas jadwal sampai dikembalikan ke Auto',
+                },
+              ].map((m) => (
+                <button
+                  key={m.nilai}
+                  type="button"
+                  onClick={() => handleSetMode(m.nilai)}
+                  disabled={!situs || toggleSitus}
+                  aria-pressed={situs ? situs.mode === m.nilai : undefined}
+                  title={m.judul}
+                  className={`px-2 sm:px-2.5 py-1.5 text-[11px] font-mono font-semibold border-r border-ink-700 last:border-r-0 transition-colors ${
+                    !situs
+                      ? 'text-ink-400 opacity-60 cursor-wait'
+                      : situs.mode === m.nilai
+                        ? m.nilai === 'auto'
+                          ? 'bg-brand-700 text-parchment-100'
+                          : m.nilai === 'buka'
+                            ? 'bg-emerald-900 text-emerald-200'
+                            : 'bg-red-900 text-red-200'
+                        : 'text-ink-400 hover:text-ink-200 hover:bg-ink-800'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
 
             {/* Username — sembunyikan di hp sangat kecil */}
             <div className="hidden sm:flex items-center gap-2 bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5">

@@ -83,11 +83,12 @@ export const adminAPI = {
   delete: (id) =>
     api.delete(`/admin/menfes/${id}`),
 
-  // Buka/tutup menfess untuk publik. Menulis baris SiteSetting di database,
-  // jadi perubahannya langsung terbaca semua orang tanpa instance lain
-  // perlu di-restart.
-  setSiteOpen: (open) =>
-    api.patch('/admin/site', { open }),
+  // Mode buka/tutup menfess untuk publik: 'auto' (ikut jadwal jam buka),
+  // 'buka' (paksa buka), atau 'tutup' (paksa tutup). Menulis baris
+  // SiteSetting di database, jadi perubahannya langsung terbaca semua orang
+  // tanpa instance lain perlu di-restart.
+  setSiteMode: (mode) =>
+    api.patch('/admin/site', { mode }),
 
   // Publikasikan gambar + caption ke Instagram.
   //

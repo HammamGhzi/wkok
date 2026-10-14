@@ -13,6 +13,13 @@
  *   7. limit global 100 request/15 menit TIDAK mematikan GET /api/site/status —
  *      kalau endpoint ini bisa membalas 429, halaman user tidak tahu situs
  *      sedang tutup dan layar tutup jadi tidak bisa dipercaya.
+ *   8. jadwal jam buka dievaluasi otomatis (unit, waktu tetap): dalam slot ->
+ *      buka, di luar slot -> tutup, batas waktu diuji eksplisit, konversi
+ *      UTC server ke WIB benar;
+ *   9. sakelar admin kini bertiga: mode 'auto' (ikut jadwal) / 'buka' /
+ *      'tutup' (paksa). Mode paksa MENANG atas jadwal, mode 'auto' membuka
+ *      kembali mengikuti jadwal, mode tidak valid ditolak 400, dan bentuk
+ *      lama { open: boolean } tetap diterima.
  *
  * DB: database yang sama dengan test lain. Karena toggle menulis baris
  * SiteSetting di database itu, test mengambil status AWAL dulu dan
@@ -163,13 +170,99 @@ const check = (name, pass, extra = '') => {
     }
     check('GET status lolos 110x dengan IP yang kehabisan kuota',
       ok === 110, `${ok}/110 -> 200`);
+
+    // ─── 8. evaluasi jadwal (unit, waktu tetap) ─────────────────────────────
+    // Waktu diuji langsung lewat fungsi murni supaya hasilnya tidak
+    // bergantung pada jam berapa test ini dijalankan.
+    console.log('\n── 8. evaluasi jadwal jam buka (unit) ──');
+    const ctl = require(path.join(__dirname, 'src/controllers/siteController.js'));
+    const ada = (nama) => typeof ctl[nama] === 'function';
+    const dj = (menit) => (ada('diJadwal') ? ctl.diJadwal(menit) : 'FUNGSI_KOSONG');
+    const mw = (d) => (ada('menitWib') ? ctl.menitWib(d) : 'FUNGSI_KOSONG');
+    const jam = (h, m = 0) => h * 60 + m;
+
+    check('siteController mengekspor diJadwal', ada('diJadwal'), typeof ctl.diJadwal);
+    check('siteController mengekspor menitWib', ada('menitWib'), typeof ctl.menitWib);
+
+    check('09:00 -> buka (di dalam slot 08-10)', dj(jam(9)) === true, String(dj(jam(9))));
+    check('10:00 -> tutup (batas akhir tidak termasuk)', dj(jam(10)) === false, String(dj(jam(10))));
+    check('16:00 -> buka (batas awal termasuk)', dj(jam(16)) === true, String(dj(jam(16))));
+    check('21:00 -> tutup (batas akhir tidak termasuk)', dj(jam(21)) === false, String(dj(jam(21))));
+    check('13:00 -> buka (di dalam slot 12-14)', dj(jam(13)) === true, String(dj(jam(13))));
+    check('17:30 -> buka (di dalam slot 16-21)', dj(jam(17, 30)) === true, String(dj(jam(17, 30))));
+    check('11:00 -> tutup (di antara slot)', dj(jam(11)) === false, String(dj(jam(11))));
+    check('00:00 -> tutup (tengah malam)', dj(jam(0)) === false, String(dj(jam(0))));
+
+    // Server Render UTC, jadwal WIB (UTC+7): 01:00Z = 08:00 WIB = 480 menit.
+    const menit1 = mw(new Date('2026-10-13T01:00:00Z'));
+    const menit2 = mw(new Date('2026-10-13T18:00:00Z'));
+    check('01:00Z = 08:00 WIB = 480 menit', menit1 === 480, String(menit1));
+    check('18:00Z = 01:00 WIB (lewat tengah malam) = 60 menit', menit2 === 60, String(menit2));
+    check('01:00Z jatuh di dalam jadwal WIB', dj(menit1) === true, String(dj(menit1)));
+
+    // ─── 9. sakelar tiga posisi: auto / buka / tutup ────────────────────────
+    console.log('\n── 9. mode auto (ikut jadwal) vs paksa ──');
+    r = await req('/api/admin/site', { method: 'PATCH', body: { mode: 'auto' }, token });
+    check('PATCH mode auto -> 200 + mode auto',
+      r.status === 200 && r.body?.mode === 'auto', `HTTP ${r.status} ${JSON.stringify(r.body)}`);
+
+    r = await req('/api/site/status');
+    check('status publik ikut menyertakan mode', r.body?.mode === 'auto', String(r.body?.mode));
+    // Di mode auto, open HARUS sama persis dengan hasil evaluasi jadwal
+    // pada menit WIB sekarang — inilah "buka/tutup otomatis ikut jadwal".
+    // Ekspektasi dihitung ulang di dekat tiap request supaya tidak mungkin
+    // meleset gara-gara jam berpindah batas slot di tengah test.
+    check('mode auto -> open = hasil jadwal sekarang',
+      r.body?.open === dj(mw(new Date())),
+      `open=${r.body?.open} jadwal=${dj(mw(new Date()))}`);
+
+    r = await req('/api/admin/site', { method: 'PATCH', body: { mode: 'buka' }, token });
+    check('PATCH mode buka -> 200', r.status === 200 && r.body?.mode === 'buka', `HTTP ${r.status}`);
+    r = await req('/api/site/status');
+    check('mode buka memaksa open=true (menang atas jadwal)',
+      r.body?.open === true && r.body?.mode === 'buka',
+      `open=${r.body?.open} mode=${r.body?.mode}`);
+
+    r = await req('/api/admin/site', { method: 'PATCH', body: { mode: 'tutup' }, token });
+    check('PATCH mode tutup -> 200', r.status === 200 && r.body?.mode === 'tutup', `HTTP ${r.status}`);
+    r = await req('/api/site/status');
+    check('mode tutup memaksa open=false (menang atas jadwal)',
+      r.body?.open === false && r.body?.mode === 'tutup',
+      `open=${r.body?.open} mode=${r.body?.mode}`);
+
+    // Guard submit ikut mode — bukan cuma tampilan layar tutup.
+    r = await buatMenfes('menfes uji saat mode tutup paksa');
+    if (r.body?.id) idsMenfes.push(r.body.id);
+    check('submit saat mode tutup -> 403', r.status === 403, `HTTP ${r.status}`);
+
+    // Balik ke auto: yang menentukan open kembali jadwal, bukan override.
+    r = await req('/api/admin/site', { method: 'PATCH', body: { mode: 'auto' }, token });
+    check('balik ke auto -> 200', r.status === 200 && r.body?.mode === 'auto', `HTTP ${r.status}`);
+    r = await req('/api/site/status');
+    check('setelah auto, open kembali = jadwal sekarang',
+      r.body?.open === dj(mw(new Date())), `open=${r.body?.open} jadwal=${dj(mw(new Date()))}`);
+
+    r = await req('/api/admin/site', { method: 'PATCH', body: { mode: 'kacau' }, token });
+    check('mode tidak valid -> 400', r.status === 400, `HTTP ${r.status}`);
+
+    r = await req('/api/admin/site', { method: 'PATCH', body: {}, token });
+    check('body kosong -> 400', r.status === 400, `HTTP ${r.status}`);
+
+    // Bentuk lama { open: boolean } harus tetap diterima — dashboard lama
+    // (atau tab admin yang belum ke-refresh) masih mengirim bentuk ini.
+    r = await req('/api/admin/site', { method: 'PATCH', body: { open: true }, token });
+    check('bentuk lama { open: true } masih jalan',
+      r.status === 200 && r.body?.open === true && r.body?.mode === 'buka',
+      `HTTP ${r.status} ${JSON.stringify(r.body)}`);
   } finally {
     // ─── bersihkan: pulihkan keadaan situs persis seperti awal ──────────────
     if (statusAwal) {
       await prisma.siteSetting.upsert({
         where: { id: 'utama' },
-        update: { isOpen: statusAwal.isOpen },
-        create: { id: 'utama', isOpen: statusAwal.isOpen },
+        // mode ikut dipulihkan: test tadi menulis override paksa di bagian 9,
+        // dan keadaan admin tidak boleh berubah gara-gara test ini.
+        update: { isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
+        create: { id: 'utama', isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
       });
     } else {
       // Belum pernah ada barisnya: hapus kembali supaya DB kembali seperti

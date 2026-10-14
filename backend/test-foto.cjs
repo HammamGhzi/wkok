@@ -50,6 +50,9 @@ const PNG_1X1 = Buffer.from(
   const cloudinary = require('./src/lib/cloudinary');
   const prisma = new PrismaClient();
 
+  // Status awal situs sebelum test menyentuhnya — dipulihkan di finally.
+  const statusAwal = await prisma.siteSetting.findUnique({ where: { id: 'utama' } });
+
   const USER = 'foto-test-admin';
   const PASS = 'password-foto-123';
   await prisma.admin.deleteMany({ where: { username: USER } });
@@ -92,6 +95,15 @@ const PNG_1X1 = Buffer.from(
   };
 
   try {
+    // Submit menfes butuh situs terbuka: paksa mode 'buka' sementara (mode
+    // 'auto' bawaan bisa sedang tertutup di luar jam buka — sakelar kini
+    // bertiga, isOpen bukan penentu status lagi), dipulihkan di finally.
+    await prisma.siteSetting.upsert({
+      where: { id: 'utama' },
+      update: { mode: 'buka' },
+      create: { id: 'utama', mode: 'buka' },
+    });
+
     console.log('── 1. login admin uji ──');
     let r = await reqJson('/api/auth/login', {
       method: 'POST',
@@ -253,6 +265,16 @@ const PNG_1X1 = Buffer.from(
     check('baris terhapus dari database', hilang === null);
   } finally {
     // ─── bersihkan ─────────────────────────────────────────────────────────
+    // Pulihkan keadaan situs persis seperti awal (lihat statusAwal di atas).
+    if (statusAwal) {
+      await prisma.siteSetting.upsert({
+        where: { id: 'utama' },
+        update: { isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
+        create: { id: 'utama', isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
+      });
+    } else {
+      await prisma.siteSetting.deleteMany({ where: { id: 'utama' } });
+    }
     if (idBuat.length) {
       await prisma.menfes.deleteMany({ where: { id: { in: idBuat } } });
     }

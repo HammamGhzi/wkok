@@ -18,16 +18,23 @@ model Admin {
 
 // ── Status buka/tutup menfess untuk publik ────────────────────────────────────
 // Hanya ada SATU baris (id "utama"): ini bukan data per-baris melainkan sakelar
-// situs. Kalau barisnya belum ada, artinya belum pernah diset dan perilaku
-// bawaannya TERBUKA — deploy pertama fitur ini tidak boleh menutup situs
-// diam-diam sebelum admin sempat menekan apa pun.
+// situs. Sakelar ini kini bertiga lewat `mode`:
 //
-// Jadwal jam buka TIDAK disimpan di sini: jadwal itu statis (08-10, 12-14,
-// 16-21) dan hidup sebagai konstanta di kode, supaya tidak ada dua sumber
-// kebenaran yang bisa berbeda.
+//   'auto'  — bawaan. Buka/tutup ditentukan OTOMATIS oleh jadwal jam buka
+//             (08-10, 12-14, 16-21 WIB) yang hidup sebagai konstanta di
+//             siteController — tidak disimpan di sini supaya tidak ada dua
+//             sumber kebenaran yang bisa berbeda.
+//   'buka'  — admin memaksa buka, menang atas jadwal, sampai admin sendiri
+//             yang mengembalikan ke 'auto'.
+//   'tutup' — admin memaksa tutup, menang atas jadwal, sampai admin sendiri
+//             yang mengembalikan ke 'auto'.
+//
+// `isOpen` adalah sisa bentuk lama (sakelar dua posisi). Tidak di-drop supaya
+// migrasi bersifat additive; tulisan baris ini sudah tidak dibaca kode lagi.
 model SiteSetting {
   id        String   @id
   isOpen    Boolean  @default(true)
+  mode      String   @default("auto")
   updatedAt DateTime @updatedAt
 }
 

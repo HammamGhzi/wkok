@@ -92,15 +92,15 @@ const LAGU_THUMB_LIAR = 'https://attacker.example.com/pixel.jpg';
 
   try {
     // Kasus submit butuh situs terbuka (tanpa ini semua submit dibalas 403).
-    // Pola yang sama dengan test-site.cjs: buka sementara hanya kalau perlu,
-    // pulihkan persis keadaan awal (statusAwal, dibaca di atas) di finally.
-    if (!statusAwal || !statusAwal.isOpen) {
-      await prisma.siteSetting.upsert({
-        where: { id: 'utama' },
-        update: { isOpen: true },
-        create: { id: 'utama', isOpen: true },
-      });
-    }
+    // Pola sama dengan test-site.cjs: paksa mode 'buka' sementara, pulihkan
+    // persis keadaan awal (statusAwal) di finally. Yang ditulis `mode`,
+    // bukan isOpen: sejak sakelar bertiga, isOpen bukan penentu status lagi,
+    // dan mode 'auto' bawaan bisa sedang tertutup di luar jam buka.
+    await prisma.siteSetting.upsert({
+      where: { id: 'utama' },
+      update: { mode: 'buka' },
+      create: { id: 'utama', mode: 'buka' },
+    });
     // Admin uji dibuat di sini (bukan sebelum try) supaya finally yang
     // menghapusnya selalu berjalan walau setup gagal di tengah jalan.
     await prisma.admin.deleteMany({ where: { username: USER } });
@@ -229,12 +229,12 @@ const LAGU_THUMB_LIAR = 'https://attacker.example.com/pixel.jpg';
     if (statusAwal) {
       await prisma.siteSetting.upsert({
         where: { id: 'utama' },
-        update: { isOpen: statusAwal.isOpen },
-        create: { id: 'utama', isOpen: statusAwal.isOpen },
+        update: { isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
+        create: { id: 'utama', isOpen: statusAwal.isOpen, mode: statusAwal.mode ?? 'auto' },
       });
     } else {
       // Belum pernah ada barisnya: hapus kembali supaya DB kembali seperti
-      // sebelum test (bawaan "terbuka" tetap berlaku).
+      // sebelum test (bawaan mode 'auto', ikut jadwal).
       await prisma.siteSetting.deleteMany({ where: { id: 'utama' } });
     }
     if (idBuat.length) {
