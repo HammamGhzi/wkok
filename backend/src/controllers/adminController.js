@@ -323,7 +323,9 @@ async function getStats(req, res) {
  * Publikasikan satu menfes ke Instagram.
  *
  * Body: multipart/form-data dengan dua field.
- *   image   — file JPEG atau PNG, hasil canvas di browser
+ *   images — 1-10 file JPEG atau PNG, hasil canvas di browser. Field ini
+ *            selalu berbentuk array, termasuk untuk satu kartu pun; field
+ *            `image` tunggal sudah tidak ada lagi.
  *   caption — teks opsional, maksimal 2200 karakter
  *
  * Body multipart dibaca lewat express.raw di routes/admin.js, bukan
@@ -368,7 +370,7 @@ async function postMenfesToInstagram(req, res) {
     // memegangnya duluan. Tolak dengan 415, jangan diteruskan.
     if (!Buffer.isBuffer(req.body)) {
       return res.status(415).json({
-        error: 'Kirim multipart/form-data dengan field image.',
+        error: 'Kirim multipart/form-data dengan field images.',
       });
     }
 
@@ -383,33 +385,67 @@ async function postMenfesToInstagram(req, res) {
       return res.status(400).json({ error: 'Data unggahan tidak bisa dibaca.' });
     }
 
-    const file = form.get('image');
     const mentahCaption = form.get('caption');
     const caption = typeof mentahCaption === 'string' ? mentahCaption : '';
 
-    if (!(file instanceof File) || file.size === 0) {
-      return res.status(400).json({ error: 'Field image wajib berisi file gambar.' });
+    // Field `image` tunggal sudah diganti total oleh `images` (array) di
+    // frontend. Satu jalur saja: kalau field lama masih ikut terkirim, jangan
+    // menebak maksud admin — tolak dengan pesan yang menyebut kedua nama.
+    if (form.has('image')) {
+      return res.status(400).json({
+        error:
+          'Field `image` sudah diganti `images` (array, 1-10 kartu). ' +
+          'Kirim ulang memakai field images.',
+      });
     }
+
+    const files = form.getAll('images');
+    if (files.length === 0) {
+      return res.status(400).json({
+        error: 'Field images wajib berisi minimal satu file gambar.',
+      });
+    }
+    // Batas dicek SEBELUM klaim dan SEBELUM ada file disimpan, jadi 11 file
+    // ditolak sebagai 400 murni: tidak ada status menfes yang berubah.
+    if (files.length > 10) {
+      return res.status(400).json({
+        error: `Mengirim ${files.length} gambar, batas Instagram 10 kartu.`,
+      });
+    }
+
     if (caption.length > igApi.BATAS_CAPTION) {
       return res.status(400).json({
         error: `Caption ${caption.length} karakter, batas Instagram ${igApi.BATAS_CAPTION}.`,
       });
     }
 
-    const imageBuffer = Buffer.from(await file.arrayBuffer());
+    const buffers = [];
+    for (let i = 0; i < files.length; i++) {
+      if (!(files[i] instanceof File) || files[i].size === 0) {
+        return res.status(400).json({
+          error: `Kartu ${i + 1} kosong atau bukan file gambar.`,
+        });
+      }
+      buffers.push({
+        buffer: Buffer.from(await files[i].arrayBuffer()),
+        mimeType: files[i].type,
+      });
+    }
 
     // Validasi di sini, sebelum terbitkan. Kalau ini gagal, tidak ada klaim
-    // kerja, tidak ada file di disk, dan status menfes tidak berubah.
-    try {
-      igPublish.periksaGambar(imageBuffer, file.type);
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
+    // kerja, tidak ada file di disk, dan status menfes tidak berubah. Nomor
+    // kartu disebut karena admin mengirim banyak file sekaligus.
+    for (let i = 0; i < buffers.length; i++) {
+      try {
+        igPublish.periksaGambar(buffers[i].buffer, buffers[i].mimeType);
+      } catch (err) {
+        return res.status(400).json({ error: `Kartu ${i + 1}: ${err.message}` });
+      }
     }
 
     const hasil = await igPublish.terbitkan({
       menfesId: id,
-      imageBuffer,
-      mimeType: file.type,
+      buffers,
       caption,
     });
 
@@ -434,8 +470,13 @@ async function postMenfesToInstagram(req, res) {
       },
     });
   } catch (err) {
-    // Kode dari igPublish bersifat spesifik dan layak dibalas apa adanya.
-    // 409 untuk-tabrakan dengan proses lain, 404 kalau menfes hilang.
+    // Input salah dilempar terbitkan SEBELUM klaim, jadi status menfes tidak
+    // berubah — aman dibalas 400. Kode dari igPublish bersifat spesifik dan
+    // layak dibalas apa adanya: 409 untuk tabrakan dengan proses lain,
+    // 404 kalau menfes hilang.
+    if (err.kode === 'INPUT_SALAH') {
+      return res.status(400).json({ error: err.message });
+    }
     if (err.kode === 'SUDAH_TAYANG' || err.kode === 'SEDANG_PROSES') {
       return res.status(409).json({ error: err.message });
     }

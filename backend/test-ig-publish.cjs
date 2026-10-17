@@ -196,7 +196,7 @@ async function main() {
   console.log('\n== guard: sudah tayang ==');
   reset();
   baris = { id: 'M1', igStatus: 'PUBLISHED', igMediaId: 'M-1', igPermalink: 'https://www.instagram.com/p/M-1/', status: 'APPROVED' };
-  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', imageBuffer: JPEG, mimeType: 'image/jpeg' }));
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
   check('ditolak', e !== null && e.kode === 'SUDAH_TAYANG', e?.kode);
   check('pesan menyebut tautan yang sudah ada', /www\.instagram\.com\/p\//.test(e?.message || ''), e?.message);
   check('Instagram sama sekali tidak dipanggil', igCalls.length === 0);
@@ -204,7 +204,7 @@ async function main() {
 
   reset();
   baris = { id: 'M1', igStatus: 'PUBLISHED', igMediaId: 'M-1', igPermalink: null, status: 'APPROVED' };
-  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', imageBuffer: JPEG, mimeType: 'image/jpeg' }));
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
   check('ditolak walau permalink kosong', e !== null && e.kode === 'SUDAH_TAYANG');
 
   // ─── 4. Klaim gagal: ada proses lain yang lebih dulu ───────────────────────
@@ -212,7 +212,7 @@ async function main() {
   reset();
   updateManyCount = 0;
   baris = { id: 'M1', igStatus: 'PENDING', igMediaId: null, igPermalink: null, status: 'APPROVED' };
-  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', imageBuffer: JPEG, mimeType: 'image/jpeg' }));
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
   check('ditolak', e !== null && e.kode === 'SEDANG_PROSES', e?.kode);
   check('Instagram tidak dipanggil', igCalls.length === 0);
 
@@ -228,8 +228,8 @@ async function main() {
     return { count: 1 };
   };
   const hasil = await Promise.allSettled([
-    igPublish.terbitkan({ menfesId: 'M1', imageBuffer: JPEG, mimeType: 'image/jpeg', caption: 'a' }),
-    igPublish.terbitkan({ menfesId: 'M1', imageBuffer: JPEG, mimeType: 'image/jpeg', caption: 'b' }),
+    igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }], caption: 'a' }),
+    igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }], caption: 'b' }),
   ]);
   const berhasil = hasil.filter((h) => h.status === 'fulfilled').length;
   const gagal = hasil.filter((h) => h.status === 'rejected').length;
@@ -243,8 +243,7 @@ async function main() {
   reset();
   const r = await igPublish.terbitkan({
     menfesId: 'M1',
-    imageBuffer: JPEG,
-    mimeType: 'image/jpeg',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
     caption: '  halo dunia  ',
   });
   check('mediaId dikembalikan', r.mediaId === 'MEDIA-777', r.mediaId);
@@ -269,8 +268,7 @@ async function main() {
   };
   const rFoto = await igPublish.terbitkan({
     menfesId: 'M1',
-    imageBuffer: JPEG,
-    mimeType: 'image/jpeg',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
     caption: '  halo carousel  ',
   });
   const anak = igCalls.filter((c) => c.fn === 'createImageContainer');
@@ -301,8 +299,7 @@ async function main() {
   };
   await igPublish.terbitkan({
     menfesId: 'M1',
-    imageBuffer: JPEG,
-    mimeType: 'image/jpeg',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
     caption: 'carousel absolut',
   });
   const anakAbs = igCalls.filter((c) => c.fn === 'createImageContainer');
@@ -320,8 +317,7 @@ async function main() {
   jebakan = 'carousel';
   const rFallback = await igPublish.terbitkan({
     menfesId: 'M1',
-    imageBuffer: JPEG,
-    mimeType: 'image/jpeg',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
     caption: 'caption tetap utuh',
   });
   check('publish tetap terjadi tepat satu kali', jumlahPublish() === 1, String(jumlahPublish()));
@@ -335,11 +331,67 @@ async function main() {
     /Foto tidak bisa diproses/.test(rFallback.peringatan || ''), rFallback.peringatan);
   check('status akhir tetap PUBLISHED', updateTerakhir().igStatus === 'PUBLISHED', updateTerakhir().igStatus);
 
+  // ─── 6d. Multi kartu: N anak berurutan + foto terakhir ─────────────────────
+  console.log('\n== multi kartu ==');
+  reset();
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED', fotoUrl: '/uploads/foto/foto-uji.png',
+  };
+  const K3 = [
+    { buffer: Buffer.from('kartu-1'), mimeType: 'image/jpeg' },
+    { buffer: Buffer.from('kartu-2'), mimeType: 'image/jpeg' },
+    { buffer: Buffer.from('kartu-3'), mimeType: 'image/jpeg' },
+  ];
+  const r3 = await igPublish.terbitkan({
+    menfesId: 'M1',
+    buffers: K3,
+    caption: 'tiga kartu',
+  });
+  const anak3 = igCalls.filter((c) => c.fn === 'createImageContainer');
+  const induk3 = igCalls.filter((c) => c.fn === 'createCarouselContainer');
+  check('3 kartu + foto = 4 container anak', anak3.length === 4, String(anak3.length));
+  check('urutan children: 3 kartu dulu, foto terakhir',
+    induk3[0]?.args.children?.length === 4 &&
+      anak3.slice(0, 3).every((c) => c.args.imageUrl.includes('/uploads/ig/')) &&
+      anak3[3]?.args.imageUrl.includes('/uploads/foto/'),
+    JSON.stringify(anak3.map((c) => c.args.imageUrl)));
+  check('publish memakai container induk', igCalls.find((c) => c.fn === 'publishContainer')?.id === 'CAROUSEL-INDUK-1');
+  check('publish tepat satu kali', jumlahPublish() === 1, String(jumlahPublish()));
+  check('tanpa peringatan kalau lancar', r3.peringatan === null, String(r3.peringatan));
+  check('tiga file ditulis berurutan', fileTertulis.length === 3, String(fileTertulis.length));
+
+  // Gagal di kartu ke-2: menfes jadi GAGAL, TIDAK ada satu pun post tayang.
+  // Percobaan ulang aman karena media_publish belum pernah terpanggil.
+  reset();
+  baris = { id: 'M1', igStatus: null, igMediaId: null, igPermalink: null, status: 'APPROVED' };
+  const asliCreate = igStub.createImageContainer;
+  let hitungKartu = 0;
+  igStub.createImageContainer = async (args) => {
+    hitungKartu += 1;
+    if (hitungKartu === 2) throw new Error('kartu kedua ditolak');
+    return asliCreate(args);
+  };
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: K3, caption: 'x' }));
+  igStub.createImageContainer = asliCreate;
+  check('kegagalan kartu di tengah dilempar', e !== null, e?.message);
+  check('tahap ditandai container_kartu', e?.tahap === 'container_kartu', e?.tahap);
+  check('igStatus ditulis FAILED', updateTerakhir().igStatus === 'FAILED');
+  check('publish tidak dipanggil sama sekali', jumlahPublish() === 0, String(jumlahPublish()));
+
+  // Batas 10 kartu: ditolak SEBELUM klaim, jadi tidak ada perubahan status.
+  reset();
+  const belasan = Array.from({ length: 11 }, () => ({ buffer: JPEG, mimeType: 'image/jpeg' }));
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: belasan }));
+  check('11 kartu ditolak', e !== null && e.kode === 'INPUT_SALAH', e?.kode);
+  check('ditolak sebelum klaim, tanpa sentuhan database', prismaCalls.length === 0, String(prismaCalls.length));
+  check('Instagram tidak dipanggil', igCalls.length === 0);
+
   // ─── 7. Kegagalan di tiap tahap ────────────────────────────────────────────
   console.log('\n== kegagalan ==');
   reset();
   jebakan = 'container';
-  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', imageBuffer: JPEG, mimeType: 'image/jpeg' }));
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
   check('kegagalan container dilempar', e !== null);
   check('tahap ditandai container', e?.tahap === 'container', e?.tahap);
   check('igStatus ditulis FAILED', updateTerakhir().igStatus === 'FAILED');
@@ -348,7 +400,7 @@ async function main() {
 
   reset();
   jebakan = 'publish';
-  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', imageBuffer: JPEG, mimeType: 'image/jpeg' }));
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
   check('kegagalan publish dilempar', e !== null);
   check('tahap ditandai media_publish', e?.tahap === 'media_publish', e?.tahap);
   check('igStatus ditulis FAILED', updateTerakhir().igStatus === 'FAILED');
@@ -358,8 +410,7 @@ async function main() {
   e = await grab(() =>
     igPublish.terbitkan({
       menfesId: 'M1',
-      imageBuffer: JPEG,
-      mimeType: 'image/jpeg',
+      buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
       caption: 'x'.repeat(2201),
     })
   );
@@ -371,8 +422,7 @@ async function main() {
   reset();
   const batas = await igPublish.terbitkan({
     menfesId: 'M1',
-    imageBuffer: JPEG,
-    mimeType: 'image/jpeg',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
     caption: 'y'.repeat(2200),
   });
   check('caption tepat 2200 karakter lolos', batas.mediaId === 'MEDIA-777');
@@ -380,13 +430,13 @@ async function main() {
   // ─── 8. Menfes tidak ada ──────────────────────────────────────────────────
   reset();
   baris = null;
-  e = await grab(() => igPublish.terbitkan({ menfesId: 'TIDAK-ADA', imageBuffer: JPEG, mimeType: 'image/jpeg' }));
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'TIDAK-ADA', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
   check('menfes tidak ada ditolak', e !== null && e.kode === 'NOT_FOUND', e?.kode);
 
   // ─── 9. Database gagal tidak boleh dianggap sukses ─────────────────────────
   reset();
   findUniqueThrows = true;
-  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', imageBuffer: JPEG, mimeType: 'image/jpeg' }));
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
   check('kegagalan baca database dilempar', e !== null);
   check('Instagram tidak dipanggil', igCalls.length === 0);
 

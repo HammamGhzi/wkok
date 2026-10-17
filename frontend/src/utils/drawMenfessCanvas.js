@@ -1,11 +1,15 @@
-import { TEMPLATES } from '../config/templates';
+import { chunkLines } from './splitLines';
 
 export const CANVAS_SIZE = {
   '1:1': { w: 1080, h: 1080 },
   '4:5': { w: 1080, h: 1350 },
 };
 
-export function wrapText(ctx, text, maxWidth, maxLines = 10) {
+// `maxLines` opsional: default Infinity = semua baris diambil tanpa dipotong.
+// Semua pemanggil lama selalu mengirim nilai eksplisit (`maxLines ||
+// template.maxLines || 10`), jadi perilaku lama tidak berubah — mode tanpa
+// batas ini dipakai fitur multicard untuk menghitung kartu.
+export function wrapText(ctx, text, maxWidth, maxLines = Infinity) {
   if (!text) return [];
   const paragraphs = text.split('\n');
   const allLines = [];
@@ -30,6 +34,39 @@ export function wrapText(ctx, text, maxWidth, maxLines = 10) {
 }
 
 /**
+ * Hitung jumlah kartu untuk sebuah pesan (fitur multicard).
+ *
+ * Langkah measure-nya SAMA PERSIS dengan drawMessage(): font diset dulu
+ * sebelum wrapText (wrapText pakai measureText), `maxTextW` dihitung dari
+ * bounds kertas yang sama. Kalau meleset, jumlah baris bisa beda dan kartu
+ * terakhir jadi kepanjangan.
+ *
+ * Pemilihan chunk mana yang dirender BUKAN urusan fungsi ini — pemanggil
+ * (TemplatePreview/ExportModal) memilih `chunks[partIndex]` lalu
+ * mengirimkannya sebagai `partLines` ke renderMenfessToCanvas.
+ *
+ * `ctx` hanya dipakai sementara (save/restore) — state canvas tidak berubah.
+ */
+export function hitungKartu(ctx, template, ratio, message) {
+  const actualRatio = ratio || template.defaultRatio || '1:1';
+  const { w } = CANVAS_SIZE[actualRatio] || CANVAS_SIZE['1:1'];
+  const bounds = template.bounds[actualRatio] || template.bounds['1:1'];
+
+  const fontSize = template.defaultFontSize || 36;
+  const paperW = w * bounds.w;
+  const padX = paperW * (bounds.padX || 0.06);
+  const maxTextW = paperW - padX * 2;
+
+  ctx.save();
+  ctx.font = `${template.fontWeight || '600'} ${fontSize}px ${template.fontFamily}`;
+  const allLines = wrapText(ctx, message, maxTextW);
+  ctx.restore();
+
+  const chunks = chunkLines(allLines, template.maxLines || 10);
+  return { totalParts: chunks.length, chunks };
+}
+
+/**
  * Gambar pesan menfes, dipatok ke TITIK TENGAH blok teks.
  *
  * Kenapa titik tengah dan bukan tepi kiri-atas seperti implementasi lama:
@@ -43,6 +80,10 @@ export function wrapText(ctx, text, maxWidth, maxLines = 10) {
  *
  * `textColor` / `fontFamily` / `maxLines` bisa dioverride karena jalur
  * fallback sengaja memakai nilai yang berbeda dari template aslinya.
+ *
+ * `partLines` (opsional): baris yang sudah di-wrap sebelumnya. Diisi = gambar
+ * baris ini mentah tanpa wrap ulang pesan (dipakai fitur multicard).
+ * `null` = perilaku lama, selalu wrap dari `text`.
  */
 function drawMessage(ctx, w, h, {
   template,
@@ -55,6 +96,7 @@ function drawMessage(ctx, w, h, {
   textColor,
   fontFamily,
   maxLines,
+  partLines = null,
 }) {
   const paperW = w * bounds.w;
   const padX = paperW * (bounds.padX || 0.06);
@@ -72,8 +114,11 @@ function drawMessage(ctx, w, h, {
     ctx.shadowOffsetY = 2;
   }
 
-  // Font harus sudah diset sebelum wrapText (wrapText pakai measureText)
-  const lines = wrapText(ctx, text, maxTextW, maxLines || template.maxLines || 10);
+  // Font harus sudah diset sebelum wrapText (wrapText pakai measureText).
+  // partLines non-null = baris hasil wrap fitur multicard, digambar mentah.
+  const lines = partLines !== null
+    ? partLines
+    : wrapText(ctx, text, maxTextW, maxLines || template.maxLines || 10);
   const lineHeight = fontSize * (template.lineHeightMultiplier || 1.55);
   const totalTextH = lines.length * lineHeight;
 
@@ -95,19 +140,25 @@ export function renderMenfessToCanvas(canvas, {
   template,
   ratio = null,
   message = '',
-  senderName = '',
-  isAnon = true,
   fontSize = null,
-  fontSizeName = null,
-  posX = null,
-  posY = null,
-  rotate = null,
   msgX = null,
   msgY = null,
   msgRotate = null,
   onStatusChange = null,
+  partLines = null, // string[] | null: baris siap gambar (multicard), null = wrap pesan
+  partIndex = 0, // int: nomor kartu ini (0-based), hanya untuk badge "n/N"
+  totalParts = 1, // int: jumlah kartu, 1 = tanpa badge (perilaku lama persis)
 }) {
   if (!canvas || !template) return;
+
+  // Clamp parameter multicard: totalParts minimal 1, partIndex di
+  // [0, totalParts-1]. Default netral (0/1) → tanpa badge → perilaku lama.
+  const safeTotalParts = Number.isFinite(totalParts) && totalParts >= 1
+    ? Math.floor(totalParts)
+    : 1;
+  const safePartIndex = Number.isFinite(partIndex)
+    ? Math.min(Math.max(0, Math.floor(partIndex)), safeTotalParts - 1)
+    : 0;
 
   const actualRatio = ratio || template.defaultRatio || '1:1';
   const { w, h } = CANVAS_SIZE[actualRatio] || CANVAS_SIZE['1:1'];
@@ -116,10 +167,6 @@ export function renderMenfessToCanvas(canvas, {
 
   const ctx = canvas.getContext('2d');
   const actualFontSize = fontSize || template.defaultFontSize || 36;
-  const actualFontSizeName = fontSizeName || template.defaultFontSizeName || 28;
-  const actualPosX = posX !== null && posX !== undefined ? posX : template.defaultSender.posX;
-  const actualPosY = posY !== null && posY !== undefined ? posY : template.defaultSender.posY;
-  const actualRotate = rotate !== null && rotate !== undefined ? rotate : template.defaultSender.rotate;
   const actualMsgX = msgX !== null && msgX !== undefined ? msgX : template.defaultMessage.posX;
   const actualMsgY = msgY !== null && msgY !== undefined ? msgY : template.defaultMessage.posY;
   const actualMsgRotate = msgRotate !== null && msgRotate !== undefined ? msgRotate : template.defaultMessage.rotate;
@@ -173,90 +220,11 @@ export function renderMenfessToCanvas(canvas, {
       msgX: actualMsgX,
       msgY: actualMsgY,
       msgRotate: actualMsgRotate,
+      partLines,
     });
 
-    // 4. Nama Pengirim
-    const hasCustomName = !isAnon && Boolean(senderName && senderName.trim());
-    const rawName = hasCustomName ? senderName.trim() : 'Seseorang';
-    const displayName = template.uppercaseSender ? rawName.toUpperCase() : rawName;
-    const senderCfg = template.defaultSender;
-
-    // Jika template memiliki teks anon bawaan dan ada nama kustom, tutupi dengan background yang cocok
-    if (hasCustomName && template.hasBakedAnon && template.bakedCover) {
-      ctx.save();
-      const cov = template.bakedCover;
-      ctx.fillStyle = cov.fill;
-      if (ctx.roundRect) {
-        ctx.beginPath();
-        ctx.roundRect(w * cov.x, h * cov.y, w * cov.w, h * cov.h, 6);
-        ctx.fill();
-      } else {
-        ctx.fillRect(w * cov.x, h * cov.y, w * cov.w, h * cov.h);
-      }
-      ctx.restore();
-    }
-
-    // Gambar nama jika bukan teks anon bawaan atau ada nama custom
-    if (hasCustomName || !template.hasBakedAnon) {
-      ctx.save();
-      const tx = w * (actualPosX / 100);
-      const ty = h * (actualPosY / 100);
-      ctx.translate(tx, ty);
-      ctx.rotate((actualRotate * Math.PI) / 180);
-
-      // Auto-shrink nama. Anchor sender adalah TEPI KIRI (lihat fillText
-      // di bawah), jadi nama melebar ke kanan; batas kanannya diambil dari
-      // tepi aman kartu yang sama dengan blok pesan (bounds.x + bounds.w).
-      // Yang dibandingkan adalah extent VISUAL setelah rotasi, bukan lebar
-      // teks mentah: teks miring memakai lebar lebih besar di layar sehingga
-      // nama yang "muat" secara aritmetika bisa tetap melewati tepi kartu.
-      //
-      // senderCfg.minFontScale (bukan `minFontScale`) punya lantai agar nama
-      // tidak menyusut jadi tidak terbaca untuk nama yang luar biasa panjang.
-      // Di atas lantai itu nama tetap meluber - tidak ada ukuran yang bisa
-      // memuatnya dengan rapi, jadi lebih baik terlalu besar daripada
-      // setipis benang.
-      const nameFontFamily = senderCfg.fontFamily || template.fontFamily;
-      const nameFontWeight = senderCfg.fontWeight || 'bold';
-      const prefix = hasCustomName ? (senderCfg.prefix || '') : '';
-      const nameText = `${prefix}${displayName}`;
-
-      const nameRightEdge = bounds.x + bounds.w;
-      const nameAvailPx = Math.max(0, (nameRightEdge - actualPosX / 100) * w);
-      const nameRad = (actualRotate * Math.PI) / 180;
-      const nameCos = Math.abs(Math.cos(nameRad));
-      const nameSin = Math.abs(Math.sin(nameRad));
-
-      let nameFontSize = actualFontSizeName;
-      ctx.font = `${nameFontWeight} ${nameFontSize}px ${nameFontFamily}`;
-      if (nameAvailPx > 0 && nameCos > 0) {
-        // Cap height ~0.72 * fontSize: komponen teks yang tegak, yang ikut
-        // menambah lebar horizontal begitu teks dimiringkan.
-        const capH = nameFontSize * 0.72;
-        const visualW = ctx.measureText(nameText).width * nameCos + capH * nameSin;
-        if (visualW > nameAvailPx) {
-          const floor = senderCfg.minFontScale ?? 0.6;
-          nameFontSize = Math.max(
-            actualFontSizeName * floor,
-            (actualFontSizeName * nameAvailPx) / visualW,
-          );
-          ctx.font = `${nameFontWeight} ${nameFontSize}px ${nameFontFamily}`;
-        }
-      }
-
-      ctx.fillStyle = senderCfg.color || '#ffffff';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'alphabetic';
-
-      if (template.textShadow) {
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-        ctx.shadowBlur = 6;
-        ctx.shadowOffsetY = 1;
-      }
-
-      ctx.fillText(nameText, 0, 0);
-      ctx.restore();
-    }
+    // Badge nomor kartu (multicard); no-op kalau totalParts <= 1.
+    drawPartBadge(ctx, w, h, template, safePartIndex, safeTotalParts);
   };
 
   img.onerror = () => {
@@ -267,15 +235,42 @@ export function renderMenfessToCanvas(canvas, {
     if (onStatusChange) onStatusChange('error');
     drawFallback(ctx, w, h, template, {
       message,
-      senderName,
-      isAnon,
       fontSize: actualFontSize,
-      fontSizeName: actualFontSizeName,
       msgX: actualMsgX,
       msgY: actualMsgY,
       msgRotate: actualMsgRotate,
+      partLines,
     });
+    // Badge tetap digambar di jalur fallback supaya kartu multicard
+    // konsisten walau background gagal dimuat.
+    drawPartBadge(ctx, w, h, template, safePartIndex, safeTotalParts);
   };
+}
+
+/**
+ * Badge nomor kartu "n/N" di pojok kanan-atas (fitur multicard).
+ * Hanya digambar bila totalParts > 1; kartu tunggal = tanpa badge,
+ * jadi perilaku lama (TemplatePreview/ExportModal) persis tidak berubah.
+ * Selalu dibungkus save/restore supaya state canvas tidak bocor.
+ */
+function drawPartBadge(ctx, w, h, template, partIndex, totalParts) {
+  if (totalParts <= 1) return;
+
+  ctx.save();
+  ctx.font = `bold ${w * 0.028}px ${template.fontFamily}`;
+  ctx.fillStyle = template.textColor || '#1a1a1a';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+
+  if (template.textShadow) {
+    // Ikuti pola shadow di drawMessage: ringan, cuma biar kontras.
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 2;
+  }
+
+  ctx.fillText(`${partIndex + 1}/${totalParts}`, w * 0.94, h * 0.06);
+  ctx.restore();
 }
 
 // Area kertas untuk jalur fallback. Sengaja bukan bounds template: kalau
@@ -286,13 +281,11 @@ const FALLBACK_BOUNDS = { x: 0.085, y: 0.24, w: 0.83, h: 0.54, padX: 0.08 };
 function drawFallback(ctx, w, h, template, opts = {}) {
   const {
     message = '',
-    senderName = '',
-    isAnon = true,
     fontSize = 36,
-    fontSizeName = 28,
     msgX = 50,
     msgY = 53,
     msgRotate = 0,
+    partLines = null,
   } = opts;
 
   ctx.fillStyle = '#111111';
@@ -312,7 +305,8 @@ function drawFallback(ctx, w, h, template, opts = {}) {
   const paperW = w * FALLBACK_BOUNDS.w;
   const paperH = h * FALLBACK_BOUNDS.h;
 
-  ctx.fillStyle = template.id === 'template1' ? '#1e3a8a' : '#f0ebe3';
+  // Kertas fallback netral; teks maroon kontras (template lite semua krem).
+  ctx.fillStyle = '#f0ebe3';
   ctx.beginPath();
   if (ctx.roundRect) {
     ctx.roundRect(paperX, paperY, paperW, paperH, 12);
@@ -329,13 +323,8 @@ function drawFallback(ctx, w, h, template, opts = {}) {
     msgX,
     msgY,
     msgRotate,
-    textColor: template.id === 'template1' ? '#ffffff' : '#1a1a1a',
+    textColor: '#7a1f2b',
     maxLines: 8,
+    partLines,
   });
-
-  const displayName = !isAnon && senderName?.trim() ? senderName.trim() : 'Seseorang';
-  ctx.font = `bold ${fontSizeName}px ${template.fontFamily}`;
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.textAlign = 'right';
-  ctx.fillText(displayName, w * 0.89, h * 0.89);
 }

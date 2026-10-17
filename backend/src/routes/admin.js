@@ -55,6 +55,13 @@ const router = express.Router();
 //
 // Parser ini tetap jadi penutup terakhir untuk request gila, bukan pengganti
 // validasi.
+//
+// Sejak multi kartu, satu request membawa 1-10 field `images` berulang.
+// 10 MB tetap dipertahankan: 10 kartu hasil canvas (200-500 KB per kartu)
+// muat dengan sisa, dan batas per file 8 MB masih diperiksa periksaGambar
+// setelah auth supaya pesannya tetap informatif. Kalau ada unggahan sah yang
+// sering mentok 413, naikkan BATAS_BODY — parser ini hanya tercapai lewat
+// authMiddleware.
 const BATAS_BODY = '10mb';
 const parserGambar = express.raw({
   type: 'multipart/form-data',

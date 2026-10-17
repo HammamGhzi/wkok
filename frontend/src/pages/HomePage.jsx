@@ -6,18 +6,28 @@ import TemplatePreview from '../components/TemplatePreview';
 import MusicPicker from '../components/MusicPicker';
 
 const MAX_CHARS = 500;
-const MAX_NAME = 30;
 
 // ── Batas foto pengirim ─────────────────────────────────────────────────────
 const UKURAN_FOTO_MAKS = 5 * 1024 * 1024;
 const TIPE_FOTO_OK = ['image/jpeg', 'image/jpg', 'image/png'];
 
-// Re-encode foto lewat canvas SEBELUM preview, supaya byte yang dilihat = byte
-// yang dikirim. Tiga hal terjadi sekaligus di sini: EXIF (termasuk lokasi
-// kamera) hilang karena canvas tidak pernah menyalin metadata; foto dijepit
-// ke sisi terpanjang 1600px; dan hasil JPEG-nya yang dikirim — server cukup
-// menyimpan apa adanya tanpa library pemrosesan gambar sama sekali.
-async function reencodeFoto(file) {
+// Bingkai foto lewat canvas SEBELUM preview, supaya byte yang dilihat = byte
+// yang dikirim. Empat hal terjadi sekaligus di sini: EXIF (termasuk lokasi
+// kamera) hilang karena canvas tidak pernah menyalin metadata; foto masuk
+// bingkai polaroid krem ala HarkatNekatt dengan RASIO ASLI foto — tidak
+// pernah dipotong atau dipaksa 4:5, cuma diskalakan; handle @harkatnekatt
+// di strip bawah; dan hasil JPEG-nya yang dikirim — server cukup menyimpan
+// apa adanya tanpa library pemrosesan gambar sama sekali.
+//
+// Bingkai dipasang DI SINI (saat user memilih foto), bukan saat export:
+// preview yang dilihat user = hasil akhir yang jadi slide IG, tanpa
+// kejutan. Konsekuensinya foto asli tidak pernah disimpan — semua foto
+// yang sampai server sudah berbingkai.
+const FOTO_PADDING = { x: 60, y: 60, bawah: 180 }; // bawah lebar = ruang handle
+const FOTO_DALAM_LEBAR = 960; // lebar area foto setelah padding 2×60
+const FOTO_DALAM_TINGGI_MAKS = 1360; // jaga total sisi terpanjang ≤ ~1600px
+
+async function bingkaiFoto(file) {
   const objUrl = URL.createObjectURL(file);
   try {
     const img = await new Promise((resolve, reject) => {
@@ -26,18 +36,37 @@ async function reencodeFoto(file) {
       el.onerror = () => reject(new Error('gambar tidak terbaca'));
       el.src = objUrl;
     });
-    const rasio = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
-    const w = Math.max(1, Math.round(img.naturalWidth * rasio));
-    const h = Math.max(1, Math.round(img.naturalHeight * rasio));
+
+    // Ukuran foto di dalam bingkai = rasio asli foto. Portrait tinggi
+    // dibatasi lalu lebarnya menyesuaikan; landscape lebar dibatasi
+    // lebar (960) — hasilnya tidak pernah ada crop, hanya skala.
+    let dalamW = FOTO_DALAM_LEBAR;
+    let dalamH = dalamW * (img.naturalHeight / img.naturalWidth);
+    if (dalamH > FOTO_DALAM_TINGGI_MAKS) {
+      dalamH = FOTO_DALAM_TINGGI_MAKS;
+      dalamW = dalamH * (img.naturalWidth / img.naturalHeight);
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
+    canvas.width = Math.round(dalamW) + FOTO_PADDING.x * 2;
+    canvas.height = Math.round(dalamH) + FOTO_PADDING.y + FOTO_PADDING.bawah;
     const ctx = canvas.getContext('2d');
-    // Putih dulu di bawah, supaya PNG berlubang tidak jadi kotak hitam.
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(img, 0, 0, w, h);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+
+    // Latar krem = warna bingkai sekaligus jaring PNG berlubang (supaya
+    // tidak jadi kotak hitam).
+    ctx.fillStyle = '#F6EFDD';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.drawImage(img, FOTO_PADDING.x, FOTO_PADDING.y, dalamW, dalamH);
+
+    // Handle di strip bawah, tengah, maroon — sama dengan palet template.
+    ctx.fillStyle = '#7A1F2B';
+    ctx.font = "bold 44px 'DM Sans', system-ui, sans-serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('@harkatnekatt', canvas.width / 2, FOTO_PADDING.y + dalamH + FOTO_PADDING.bawah / 2);
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
     if (!blob) throw new Error('gagal mengubah gambar');
     return new File([blob], 'foto.jpg', { type: 'image/jpeg' });
   } finally {
@@ -218,13 +247,11 @@ function LayarMuat({ darkMode, setDarkMode }) {
 
 export default function HomePage() {
   const [message, setMessage] = useState('');
-  const [isAnon, setIsAnon] = useState(true);
-  const [senderName, setSenderName] = useState('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('template1');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('template4');
   const [showPreview, setShowPreview] = useState(true); // Default tampil agar user langsung melihat bentuk aslinya
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState('Template 1');
+  const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState('Template 4');
   const [step, setStep] = useState(1);
 
   // Lagu pilihan pengirim (step 4). Null = tanpa lagu — fieldnya tidak ikut
@@ -305,10 +332,6 @@ export default function HomePage() {
       toast.error('Pesan minimal 5 karakter ya!');
       return;
     }
-    if (!isAnon && senderName.trim().length === 0) {
-      toast.error('Tulis nama kamu dulu!');
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -317,7 +340,6 @@ export default function HomePage() {
         // identik dengan jalur JSON — bedanya cuma pembungkusnya.
         const form = new FormData();
         form.append('message', trimmed);
-        if (!isAnon && senderName.trim()) form.append('senderName', senderName.trim());
         form.append('senderInfo', selectedTemplate.name);
         form.append('foto', foto, foto.name);
         // Lagu dikirim sebagai string JSON (FormData hanya menyimpan teks).
@@ -327,7 +349,6 @@ export default function HomePage() {
       } else {
         await menfesAPI.submit({
           message: trimmed,
-          senderName: isAnon ? null : senderName.trim(),
           senderInfo: selectedTemplate.name,
           // Lagu hanya ikut kalau dipilih; tanpa pilihan, field tidak dikirim.
           ...(music ? { music } : {}),
@@ -336,7 +357,6 @@ export default function HomePage() {
       setLastSubmittedTemplate(selectedTemplate.name);
       setSubmitted(true);
       setMessage('');
-      setSenderName('');
       setFoto(null);
       setMusic(null);
       toast.success('Menfess terkirim! Menunggu persetujuan admin.');
@@ -361,7 +381,7 @@ export default function HomePage() {
       return;
     }
     try {
-      setFoto(await reencodeFoto(pilih));
+      setFoto(await bingkaiFoto(pilih));
     } catch {
       toast.error('Foto tidak bisa dibaca. Coba gambar lain.');
     }
@@ -370,9 +390,7 @@ export default function HomePage() {
   function handleReset() {
     setSubmitted(false);
     setMessage('');
-    setSenderName('');
-    setIsAnon(true);
-    setSelectedTemplateId('template1');
+    setSelectedTemplateId('template4');
     setShowPreview(true);
     setFoto(null);
     setMusic(null);
@@ -382,9 +400,8 @@ export default function HomePage() {
   const stepTitles = {
     1: 'Pilih Template',
     2: 'Isi Pesan',
-    3: 'Tampil Sebagai',
-    4: 'Musik — Opsional',
-    5: 'Foto — Opsional',
+    3: 'Musik — Opsional',
+    4: 'Foto — Opsional',
   };
 
   // Fail-closed: form hanya tampil setelah server bilang "buka". Selama
@@ -443,7 +460,7 @@ export default function HomePage() {
 
               {/* Mobile wizard steps */}
               <div className="sm:hidden flex items-center gap-2 mb-4">
-                {[1, 2, 3, 4, 5].map((s) => (
+                {[1, 2, 3, 4].map((s) => (
                   <button
                     type="button"
                     key={s}
@@ -536,7 +553,7 @@ export default function HomePage() {
               </div>
 
               {/* 2. Pratinjau Langsung Gambar Template Asli */}
-              {showPreview && (step === 1 || step === 2 || step === 3) && (
+              {showPreview && (step === 1 || step === 2) && (
                 <div className="p-3.5 sm:p-4 rounded-xl bg-parchment-100 dark:bg-ink-900/90 border border-parchment-400 dark:border-ink-600 space-y-2 animate-fadeIn">
                   <div className="flex items-center justify-between border-b border-parchment-300 dark:border-ink-700 pb-2">
                     <p className="text-[11px] font-mono font-bold text-ink-700 dark:text-parchment-300 uppercase tracking-widest">
@@ -550,14 +567,12 @@ export default function HomePage() {
                   <TemplatePreview
                     template={selectedTemplate}
                     message={message}
-                    senderName={senderName}
-                    isAnon={isAnon}
                     className="pt-1 pb-1"
                   />
                 </div>
               )}
 
-              {/* 3. Isi Pesan */}
+              {/* 2. Isi Pesan */}
               <div className={`${step === 2 ? '' : 'hidden sm:block'}`}>
                 <label
                   htmlFor="message"
@@ -592,67 +607,13 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* 4. Pilihan Pengirim */}
+              {/* 3. Musik — opsional, cuma referensi admin di dashboard */}
               <div className={`space-y-3 ${step === 3 ? '' : 'hidden sm:block'}`}>
-                <p className="text-xs font-semibold text-ink-700 dark:text-parchment-300 font-mono uppercase tracking-widest">
-                  Tampil Sebagai
-                </p>
-
-                {/* Toggle anonim / nama sendiri */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsAnon(true)}
-                    className={`py-3 sm:py-2.5 px-3 rounded-xl border text-xs font-mono font-semibold transition-all ${
-                      isAnon
-                        ? 'bg-brand-700 border-brand-600 text-ink-900 dark:text-parchment-100 shadow-md'
-                        : 'bg-parchment-100 dark:bg-ink-800 border-parchment-300 dark:border-ink-600 text-ink-600 dark:text-parchment-400 hover:text-ink-900 dark:text-parchment-200 hover:border-parchment-300 dark:border-ink-500'
-                    }`}
-                  >
-                    Dari Seseorang (Anonim)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAnon(false)}
-                    className={`py-3 sm:py-2.5 px-3 rounded-xl border text-xs font-mono font-semibold transition-all ${
-                      !isAnon
-                        ? 'bg-brand-700 border-brand-600 text-ink-900 dark:text-parchment-100 shadow-md'
-                        : 'bg-parchment-100 dark:bg-ink-800 border-parchment-300 dark:border-ink-600 text-ink-600 dark:text-parchment-400 hover:text-ink-900 dark:text-parchment-200 hover:border-parchment-300 dark:border-ink-500'
-                    }`}
-                  >
-                    Tulis Nama
-                  </button>
-                </div>
-
-                {/* Input nama jika tidak anonim */}
-                {!isAnon && (
-                  <div>
-                    <input
-                      type="text"
-                      value={senderName}
-                      onChange={(e) => setSenderName(e.target.value)}
-                      placeholder="Nama kamu / inisial..."
-                      maxLength={MAX_NAME}
-                      className="input-field font-mono text-sm"
-                      disabled={submitting}
-                      aria-label="Nama pengirim"
-                      autoFocus
-                      style={{ fontSize: '16px' /* cegah zoom iOS */ }}
-                    />
-                    <div className="text-right text-xs mt-1 font-mono text-ink-600 dark:text-parchment-400">
-                      {MAX_NAME - senderName.length} karakter tersisa
-                    </div>
-                  </div>
-                )}
+                <MusicPicker value={music} onChange={setMusic} disabled={submitting} aktif={step === 3} />
               </div>
 
-              {/* 4. Musik — opsional, cuma referensi admin di dashboard */}
+              {/* 4. Foto — opsional, jadi slide kedua di post IG */}
               <div className={`space-y-3 ${step === 4 ? '' : 'hidden sm:block'}`}>
-                <MusicPicker value={music} onChange={setMusic} disabled={submitting} aktif={step === 4} />
-              </div>
-
-              {/* 5. Foto — opsional, jadi slide kedua di post IG */}
-              <div className={`space-y-3 ${step === 5 ? '' : 'hidden sm:block'}`}>
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-ink-700 dark:text-parchment-300 font-mono uppercase tracking-widest">
                     Foto — Opsional
@@ -663,7 +624,8 @@ export default function HomePage() {
                 </div>
 
                 <p className="text-[11px] text-ink-500 dark:text-parchment-400 font-mono leading-relaxed">
-                  JPG/PNG, maks 5 MB. Fotonya jadi slide kedua setelah kartu di
+                  JPG/PNG, maks 5 MB. Fotonya otomatis dibingkai ala
+                  HarkatNekatt, lalu jadi slide kedua setelah kartu di
                   postingan Instagram.
                 </p>
 
@@ -746,7 +708,7 @@ export default function HomePage() {
                     ← Kembali
                   </button>
                 )}
-                {step < 5 && (
+                {step < 4 && (
                   <button
                     type="button"
                     onClick={() => setStep(step + 1)}
@@ -758,7 +720,7 @@ export default function HomePage() {
               </div>
 
               {/* Info Privasi */}
-              <div className={`bg-parchment-100 dark:bg-ink-800/90 border border-parchment-400 dark:border-ink-600 rounded-xl p-3 ${step === 3 || step === 4 || step === 5 ? '' : 'hidden sm:block'}`}>
+              <div className={`bg-parchment-100 dark:bg-ink-800/90 border border-parchment-400 dark:border-ink-600 rounded-xl p-3 ${step === 3 || step === 4 ? '' : 'hidden sm:block'}`}>
                 <p className="text-xs text-ink-700 dark:text-parchment-300 flex items-center gap-2">
                   <svg className="w-4 h-4 shrink-0 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -770,8 +732,8 @@ export default function HomePage() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={submitting || message.trim().length < 5 || (!isAnon && !senderName.trim())}
-                className={`btn-primary w-full text-center font-mono tracking-widest py-3.5 sm:py-3 shadow-lg hover:shadow-brand-900/30 transition-shadow ${step === 5 ? '' : 'hidden sm:block'}`}
+                disabled={submitting || message.trim().length < 5}
+                className={`btn-primary w-full text-center font-mono tracking-widest py-3.5 sm:py-3 shadow-lg hover:shadow-brand-900/30 transition-shadow ${step === 4 ? '' : 'hidden sm:block'}`}
               >
                 {submitting ? (
                   <span className="flex items-center justify-center gap-2">

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Backend API untuk web menfes Harkat Nekat",
   "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",

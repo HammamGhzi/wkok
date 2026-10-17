@@ -265,7 +265,12 @@ export default function AdminDashboardPage() {
 
       {/* ── Topbar ──────────────────────────────────────────────────── */}
       <header className="bg-ink-900 border-b border-ink-700 sticky top-0 z-20">
-        <div className="max-w-5xl mx-auto px-4 sm:px-5 h-13 sm:h-14 flex items-center justify-between gap-3">
+        {/* flex-wrap: di HP sempit (≤~360px) baris atas kepenuhan — brand,
+            sakelar, dan logout muat 1 baris hanya di layar lebar. Dengan wrap
+            + ml-auto di grup kanan, HP kecil turun ke 2 baris (brand di atas,
+            status+sakelar+logout di bawah) tanpa memotong tombol mana pun.
+            tinggi tetap hanya di sm+; di HP tinggi mengikuti isi (2 baris). */}
+        <div className="max-w-5xl mx-auto px-4 sm:px-5 py-2 sm:py-0 sm:h-14 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
           {/* Brand */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="w-7 h-7 bg-brand-700 rounded flex items-center justify-center shrink-0">
@@ -279,8 +284,9 @@ export default function AdminDashboardPage() {
             <span className="text-ink-200 font-mono text-xs hidden sm:inline shrink-0">/ Admin</span>
           </div>
 
-          {/* Right */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Right — ml-auto: saat wrap di HP, grup ini tetap menempel
+              kanan di baris keduanya. */}
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
             {/* Titik warna = status EFEKTIF sekarang (hasil akhir, sudah
                 termasuk override admin), bukan posisi sakelar. */}
             <span
@@ -338,7 +344,7 @@ export default function AdminDashboardPage() {
                   disabled={!situs || toggleSitus}
                   aria-pressed={situs ? situs.mode === m.nilai : undefined}
                   title={m.judul}
-                  className={`px-2 sm:px-2.5 py-1.5 text-[11px] font-mono font-semibold border-r border-ink-700 last:border-r-0 transition-colors ${
+                  className={`px-2 sm:px-2.5 py-1.5 min-h-9 sm:min-h-0 text-[11px] font-mono font-semibold border-r border-ink-700 last:border-r-0 transition-colors ${
                     !situs
                       ? 'text-ink-400 opacity-60 cursor-wait'
                       : situs.mode === m.nilai
@@ -362,7 +368,7 @@ export default function AdminDashboardPage() {
             </div>
             <button
               onClick={logout}
-              className="flex items-center gap-1.5 text-xs font-mono text-ink-200 hover:text-brand-400 transition-colors border border-ink-700 hover:border-brand-700/50 px-2.5 sm:px-3 py-1.5 rounded-lg"
+              className="flex items-center gap-1.5 text-xs font-mono text-ink-200 hover:text-brand-400 transition-colors border border-ink-700 hover:border-brand-700/50 px-2.5 sm:px-3 py-1.5 min-h-9 sm:min-h-0 rounded-lg"
             >
               <svg className="w-3.5 h-3.5 sm:w-3 sm:h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />

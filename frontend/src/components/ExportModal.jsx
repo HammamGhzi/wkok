@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { TEMPLATES, getTemplateById, parseTemplateFromMenfes } from '../config/templates';
-import { renderMenfessToCanvas, CANVAS_SIZE } from '../utils/drawMenfessCanvas';
+import { renderMenfessToCanvas, CANVAS_SIZE, hitungKartu } from '../utils/drawMenfessCanvas';
 import { adminAPI, urlAset } from '../api';
 import usePreviewLagu from '../hooks/usePreviewLagu';
 
@@ -23,14 +23,16 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   const currentTemplate = getTemplateById(selectedTemplateId);
 
   // Rasio IKUT TEMPLATE, bukan pilihan user. Semua template memakai 4:5 dan
-  // zona aman, posisi pesan, serta posisi sender di gambar sudah diukur untuk
-  // rasio itu. Tombol rasio sebelumnya membiarkan 1:1 dipilih, dan di 1:1
-  // cover-crop memotong tinggi gambar sehingga posisi label yang dibaked
-  // bergeser ke bawah - nama lalu melayang jauh di atas labelnya. Menghapus
-  // pilihan itu lebih jujur daripada menambal per-rasio di tiga template.
+  // zona aman serta posisi pesan di gambar sudah diukur untuk rasio itu.
+  // Tombol rasio sebelumnya membiarkan 1:1 dipilih, dan di 1:1 cover-crop
+  // memotong tinggi gambar sehingga zona aman yang dibaked bergeser.
+  // Menghapus pilihan itu lebih jujur daripada menambal per-rasio di tiap
+  // template.
   const ratio = currentTemplate.defaultRatio || '4:5';
-  const [fontSize, setFontSize] = useState(currentTemplate.defaultFontSize || 36);
-  const [fontSizeName, setFontSizeName] = useState(currentTemplate.defaultFontSizeName || 28);
+  // Font ukuran pesan TIDAK punya slider: selalu template.defaultFontSize.
+  // Alasan: multicard harus sinkron dengan hitungKartu (yang memakai default),
+  // dan font besar di 1 kartu bisa memotong teks diam-diam karena wrap tetap
+  // dibatasi maxLines. Posisi/rotasi tetap bisa diatur di bawah.
   const [downloading, setDownloading] = useState(false);
   // Unduh foto pengirim + penanda file hilang. Disk server ephemeral (Render),
   // jadi foto bisa raib setelah redeploy — section-nya harus jujur bilang
@@ -46,15 +48,19 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   const [pesan, setPesan] = useState(menfes?.message || '');
   const [posting, setPosting] = useState(false);
   const [bgStatus, setBgStatus] = useState('loading');
-  const [posX, setPosX] = useState(currentTemplate.defaultSender.posX);
-  const [posY, setPosY] = useState(currentTemplate.defaultSender.posY);
-  const [rotate, setRotate] = useState(currentTemplate.defaultSender.rotate);
 
   // Posisi teks menfes — dipatok ke titik tengah blok, bukan kiri-atas,
   // supaya blok multi-baris tetap stabil dan rotasi berputar di sekitar pusat.
   const [msgX, setMsgX] = useState(currentTemplate.defaultMessage.posX);
   const [msgY, setMsgY] = useState(currentTemplate.defaultMessage.posY);
   const [msgRotate, setMsgRotate] = useState(currentTemplate.defaultMessage.rotate);
+
+  // Navigasi multicard di preview live: kartu aktif + baris per kartu.
+  // Chunk dihitung sendiri di efek preview (bukan dipinjam dari handlePost)
+  // supaya selalu sinkron dengan pesan yang sedang diketik admin.
+  const [part, setPart] = useState(0); // 0-based, kartu aktif
+  const [chunks, setChunks] = useState(null); // null = belum dihitung
+  const totalParts = chunks ? chunks.length : 1;
 
   // True setelah kolom controls di-scroll: preview HP mengecil jadi strip
   // supaya area slider tetap lega. Di desktop preview punya kolom sendiri
@@ -95,28 +101,58 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   function handleSelectTemplate(tmplId) {
     const tmpl = getTemplateById(tmplId);
     setSelectedTemplateId(tmplId);
-    setFontSize(tmpl.defaultFontSize);
-    setFontSizeName(tmpl.defaultFontSizeName);
-    setPosX(tmpl.defaultSender.posX);
-    setPosY(tmpl.defaultSender.posY);
-    setRotate(tmpl.defaultSender.rotate);
     setMsgX(tmpl.defaultMessage.posX);
     setMsgY(tmpl.defaultMessage.posY);
     setMsgRotate(tmpl.defaultMessage.rotate);
   }
 
-  // Reset koordinat slider ke default template saat ini
+  // Reset slider ke default template saat ini
   function handleResetPositions() {
-    setPosX(currentTemplate.defaultSender.posX);
-    setPosY(currentTemplate.defaultSender.posY);
-    setRotate(currentTemplate.defaultSender.rotate);
-    setFontSize(currentTemplate.defaultFontSize);
-    setFontSizeName(currentTemplate.defaultFontSizeName);
     setMsgX(currentTemplate.defaultMessage.posX);
     setMsgY(currentTemplate.defaultMessage.posY);
     setMsgRotate(currentTemplate.defaultMessage.rotate);
     toast.success('Posisi direset ke default template.');
   }
+
+  // Hitung jumlah kartu + chunk barisnya buat preview live. Wajib SETELAH
+  // document.fonts.ready (sama seperti hitungDariPesan): sebelum font siap,
+  // wrapText bisa meleset ±1 baris. Chunk preview dan chunk export sama-sama
+  // hasil hitungKartu dengan font default template, jadi yang dilihat admin
+  // = yang keluar di file.
+  useEffect(() => {
+    let isMounted = true;
+
+    // Pesan/template berubah → kembali ke kartu pertama, chunk lama dibuang
+    // dulu supaya render sementara memakai jalur lama dengan pesan yang baru.
+    setPart(0);
+    setChunks(null);
+
+    const hitung = () => {
+      if (!isMounted) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const { chunks: hasil } = hitungKartu(ctx, currentTemplate, ratio, pesanUntukExport());
+      if (!isMounted) return;
+
+      setChunks(hasil);
+      // Clamp: pesan dipendekkan → totalParts turun → part bisa di luar range.
+      setPart((p) => Math.min(p, hasil.length - 1));
+    };
+
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(hitung);
+    } else {
+      // Fallback browser tanpa Font Loading API
+      hitung();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedTemplateId, ratio, pesan]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -126,20 +162,21 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
 
     const render = () => {
       if (!isMounted) return;
+      const safePart = Math.min(part, totalParts - 1);
+      // Multicard: gambar chunk aktif + badge n/N. Kartu tunggal: tanpa
+      // partLines = render lama. Font SELALU default template (tanpa param
+      // fontSize) supaya preview = hasil export.
+      const multicard = totalParts > 1;
       renderMenfessToCanvas(canvas, {
         template: currentTemplate,
         ratio,
         message: pesan,
-        senderName: menfes?.senderName || '',
-        isAnon: !menfes?.senderName,
-        fontSize,
-        fontSizeName,
-        posX,
-        posY,
-        rotate,
         msgX,
         msgY,
         msgRotate,
+        partLines: multicard && chunks ? (chunks[safePart] || null) : null,
+        partIndex: safePart,
+        totalParts,
         onStatusChange: setBgStatus,
       });
     };
@@ -155,7 +192,7 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
     return () => {
       isMounted = false;
     };
-  }, [selectedTemplateId, ratio, fontSize, fontSizeName, menfes, pesan, posX, posY, rotate, msgX, msgY, msgRotate]);
+  }, [selectedTemplateId, ratio, menfes, pesan, msgX, msgY, msgRotate, part, chunks, totalParts]);
 
   // Breakpoint listener (desktop vs mobile).
   useEffect(() => {
@@ -198,51 +235,101 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
     return () => el.removeEventListener('scroll', sync);
   }, [isDesktop]);
 
-  // Render ke canvas lalu jadi Blob. Dipisah karena dua tombol butuh hasil
-  // yang sama persis: yang diunduh admin dan yang tayang di Instagram harus
-  // gambar yang identik, bukan dua render yang mungkin berbeda.
-  async function renderKeBlob() {
-    const canvas = canvasRef.current;
-    renderMenfessToCanvas(canvas, {
-      template: currentTemplate,
-      ratio,
-      message: pesan,
-      senderName: menfes?.senderName || '',
-      isAnon: !menfes?.senderName,
-      fontSize,
-      fontSizeName,
-      posX,
-      posY,
-      rotate,
-      msgX,
-      msgY,
-      msgRotate,
-    });
-    await new Promise((r) => setTimeout(r, 300));
+  // Pesan di-trim SEKALI di sini, hasilnya dipakai identik untuk hitungKartu
+  // dan untuk render — kalau dua jalur trim/prepare sendiri-sendiri, jumlah
+  // baris bisa beda dan kartu terakhir jadi kepanjangan.
+  function pesanUntukExport() {
+    return (pesan || '').trim();
+  }
 
-    return new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (b) =>
-          b
-            ? resolve(b)
-            : reject(new Error('Browser gagal mengubah canvas jadi gambar.')),
-        'image/jpeg',
-        0.95
+  // Hitung jumlah kartu + chunk-nya. Wajib SETELAH document.fonts.ready:
+  // hitungKartu pakai ctx.measureText, dan kalau font belum termuat hasil
+  // wrap-nya meleset dari render yang menunggu font sendiri.
+  async function hitungDariPesan() {
+    if (document.fonts && document.fonts.ready) {
+      try {
+        await document.fonts.ready;
+      } catch {
+        // Browser tanpa Font Loading API: lanjut, render juga fallback sama.
+      }
+    }
+    const msg = pesanUntukExport();
+    const ctx = canvasRef.current.getContext('2d');
+    // `msg` ikut dikembalikan supaya render memakai string yang SAMA dengan
+    // hitung — trim hanya sekali per handler.
+    return { ...hitungKartu(ctx, currentTemplate, ratio, msg), msg };
+  }
+
+  // Render ke canvas lalu jadi Blob — SATU blob per kartu. Dipisah karena
+  // dua tombol butuh hasil yang sama persis: yang diunduh admin dan yang
+  // tayang di Instagram harus gambar yang identik, bukan dua render yang
+  // mungkin berbeda.
+  //
+  // `kartu` boleh diisi hasil hitungDariPesan() yang sudah dipanggil pemanggil
+  // (handlePost butuh jumlah kartu untuk guard batas 10 SEBELUM render);
+  // tanpa argumen, fungsi ini hitung sendiri — tetap sekali per handler.
+  async function renderSemuaBlob(kartu = null) {
+    const canvas = canvasRef.current;
+    const { totalParts, chunks, msg } = kartu || (await hitungDariPesan());
+
+    const multicard = totalParts > 1;
+
+    const blobs = [];
+    for (let i = 0; i < totalParts; i++) {
+      renderMenfessToCanvas(canvas, {
+        template: currentTemplate,
+        ratio,
+        message: msg,
+        msgX,
+        msgY,
+        msgRotate,
+        partLines: multicard ? chunks[i] : null,
+        partIndex: i,
+        totalParts,
+      });
+      // Render canvas ini async (img.onload + fonts.ready di dalam
+      // renderMenfessToCanvas), jadi tunggu pola 300ms yang sama seperti
+      // kode lama sebelum mengunci hasilnya jadi blob.
+      await new Promise((r) => setTimeout(r, 300));
+
+      blobs.push(
+        await new Promise((resolve, reject) => {
+          canvas.toBlob(
+            (b) =>
+              b
+                ? resolve(b)
+                : reject(new Error('Browser gagal mengubah canvas jadi gambar.')),
+            'image/jpeg',
+            0.95
+          );
+        })
       );
-    });
+
+      // Jeda antar kartu: kasih waktu event loop + decode sebelum canvas
+      // ditimpa render berikutnya.
+      if (i < totalParts - 1) await new Promise((r) => setTimeout(r, 100));
+    }
+    return blobs;
   }
 
   async function handleDownload() {
     setDownloading(true);
     try {
-      const blob = await renderKeBlob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `menfes-${currentTemplate.id}-${Date.now()}.jpg`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(`Gambar template ${currentTemplate.name} berhasil diunduh.`);
+      const blobs = await renderSemuaBlob();
+      const n = blobs.length;
+      // Unduh berurutan, satu anchor click per blob. Jeda 400ms antar click
+      // supaya browser tidak menolak/menunda unduhan yang datang terlalu
+      // cepat (batas 10 kartu HANYA untuk upload, download bebas).
+      for (let i = 0; i < n; i++) {
+        const url = URL.createObjectURL(blobs[i]);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `menfes-${currentTemplate.id}-kartu-${i + 1}-dari-${n}.jpg`;
+        a.click();
+        URL.revokeObjectURL(url);
+        if (i < n - 1) await new Promise((r) => setTimeout(r, 400));
+      }
+      toast.success(`${n} gambar berhasil diunduh`);
     } catch (err) {
       toast.error('Gagal download gambar.');
       console.error(err);
@@ -282,17 +369,39 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
     }
     setPosting(true);
     try {
-      const blob = await renderKeBlob();
+      // Guard batas Instagram SEBELUM render/upload: pesan 11+ kartu harus
+      // ditolak di sini, jadi admin tidak menunggu 11 render percuma.
+      // hitungKartu dipanggil sekali di handler ini; hasilnya dipakai lagi
+      // oleh renderSemuaBlob supaya tidak dihitung dobel.
+      const kartu = await hitungDariPesan();
+      // Foto pengirim (kalau ada) ikut jadi anak carousel, jadi jumlah anak
+      // = kartu + 1. Guard-nya di sini juga, bukan hanya jumlah kartu.
+      const jumlahAnak = kartu.totalParts + (menfes?.fotoUrl ? 1 : 0);
+      if (jumlahAnak > 10) {
+        toast.error('Instagram feed maksimal 10 kartu — pesan terlalu panjang, pangkas dulu.');
+        return;
+      }
+      const blobs = await renderSemuaBlob(kartu);
 
       // Content-Type sengaja tidak diisi. Browser yang memasang boundary
       // multipart; menyebut multipart/form-data secara manual tanpa boundary
       // membuat server tidak bisa mengurai body.
+      //
+      // Field `images` (array), bukan `image` lagi: backend Task 5 menerima
+      // array kartu. Kartu tunggal tetap dikirim sebagai array berisi 1 —
+      // kontraknya array di semua jumlah kartu.
       const fd = new FormData();
-      fd.append('image', blob, `menfes-${currentTemplate.id}.jpg`);
+      blobs.forEach((blob, i) => {
+        fd.append('images', blob, `menfes-${currentTemplate.id}-kartu-${i + 1}.jpg`);
+      });
       fd.append('caption', caption);
 
       const hasil = await adminAPI.postInstagram(menfes.id, fd);
-      toast.success('Tayang di Instagram.');
+      toast.success(
+        blobs.length > 1
+          ? `${blobs.length} kartu tayang di Instagram.`
+          : 'Tayang di Instagram.'
+      );
       // Carousel kadang berakhir "tayang tanpa foto" (foto gagal diproses IG
       // sebelum container induk jadi). Kartu tetap tayang — tapi admin harus
       // tahu, bukan mengira semuanya lengkap.
@@ -425,7 +534,7 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
               Di mobile kolom tetap full-width (default stretch) dan canvas
               di-center, supaya panel gelapnya tetap membentang penuh. */}
           <div
-            className="flex-none flex items-center justify-center bg-ink-800 border-b sm:border-b-0 sm:border-r border-ink-600 p-3 sm:self-start"
+            className="relative flex-none flex items-center justify-center bg-ink-800 border-b sm:border-b-0 sm:border-r border-ink-600 p-3 sm:self-start"
             style={isDesktop ? { width: previewW + PREVIEW_PAD } : undefined}
           >
             <canvas
@@ -438,6 +547,38 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
                 maxWidth: '100%',
               }}
             />
+
+            {/* Navigasi multicard — dirender HANYA kalau totalParts > 1,
+                supaya preview 1 kartu identik dengan versi lama. */}
+            {totalParts > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPart((p) => Math.max(0, p - 1))}
+                  disabled={part <= 0}
+                  aria-label="Kartu sebelumnya"
+                  className={`absolute left-4 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-lg font-bold leading-none text-white shadow-lg hover:bg-black/75 focus:outline-none focus:ring-2 focus:ring-white/60 ${
+                    part <= 0 ? 'pointer-events-none opacity-30' : 'opacity-90'
+                  }`}
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPart((p) => Math.min(totalParts - 1, p + 1))}
+                  disabled={part >= totalParts - 1}
+                  aria-label="Kartu berikutnya"
+                  className={`absolute right-4 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-lg font-bold leading-none text-white shadow-lg hover:bg-black/75 focus:outline-none focus:ring-2 focus:ring-white/60 ${
+                    part >= totalParts - 1 ? 'pointer-events-none opacity-30' : 'opacity-90'
+                  }`}
+                >
+                  ›
+                </button>
+                <span className="absolute bottom-5 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-mono font-semibold text-white shadow-lg">
+                  {part + 1} / {totalParts}
+                </span>
+              </>
+            )}
           </div>
 
           {/* Controls — satu-satunya area scroll di modal ini.
@@ -522,53 +663,13 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
                 <span className="block text-ink-300 mt-0.5">ikut template</span>
               </p>
             </div>
-
-            {/* Font size pesan */}
-            <div>
-              <label className="block text-xs font-mono font-semibold text-parchment-400 mb-2 tracking-widest uppercase">
-                Teks Pesan: {fontSize}px
-              </label>
-              <input
-                type="range"
-                min={20}
-                max={56}
-                step={2}
-                value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))}
-                className="w-full accent-brand-600 mt-1 h-5"
-              />
-              <div className="flex justify-between text-xs text-ink-200 mt-0.5 font-mono">
-                <span>Kecil</span>
-                <span>Besar</span>
-              </div>
-            </div>
           </div>
 
-          {/* Font size nama */}
-          <div>
-            <label className="block text-xs font-mono font-semibold text-parchment-400 mb-2 tracking-widest uppercase">
-              Ukuran Nama Pengirim: {fontSizeName}px
-            </label>
-            <input
-              type="range"
-              min={14}
-              max={44}
-              step={2}
-              value={fontSizeName}
-              onChange={(e) => setFontSizeName(Number(e.target.value))}
-              className="w-full accent-brand-600 h-5"
-            />
-            <div className="flex justify-between text-xs text-ink-200 mt-0.5 font-mono">
-              <span>Kecil</span>
-              <span>Besar</span>
-            </div>
-          </div>
-
-          {/* Posisi Nama Pengirim */}
+          {/* Posisi Teks Pesan */}
           <div className="bg-ink-800 border border-ink-600 rounded-xl p-3 space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-[10px] font-mono font-bold text-parchment-400 tracking-widest uppercase">
-                Posisi Pengirim ({menfes.senderName?.trim() || 'Anonim'})
+                Posisi Teks Pesan
               </p>
               <button
                 type="button"
@@ -578,61 +679,6 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
                 ↺ Reset Default
               </button>
             </div>
-
-            <div>
-              <div className="flex justify-between text-xs font-mono text-ink-200 mb-1">
-                <span>Kiri ← X → Kanan</span>
-                <span className="text-parchment-400">{posX}%</span>
-              </div>
-              <input
-                type="range"
-                min={10}
-                max={95}
-                step={0.5}
-                value={posX}
-                onChange={(e) => setPosX(Number(e.target.value))}
-                className="w-full accent-brand-600 h-5"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs font-mono text-ink-200 mb-1">
-                <span>Atas ↑ Y ↓ Bawah</span>
-                <span className="text-parchment-400">{posY}%</span>
-              </div>
-              <input
-                type="range"
-                min={20}
-                max={95}
-                step={0.5}
-                value={posY}
-                onChange={(e) => setPosY(Number(e.target.value))}
-                className="w-full accent-brand-600 h-5"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs font-mono text-ink-200 mb-1">
-                <span>Rotasi Teks ↺</span>
-                <span className="text-parchment-400">{rotate}°</span>
-              </div>
-              <input
-                type="range"
-                min={-30}
-                max={30}
-                step={0.5}
-                value={rotate}
-                onChange={(e) => setRotate(Number(e.target.value))}
-                className="w-full accent-brand-600 h-5"
-              />
-            </div>
-          </div>
-
-          {/* Posisi Teks Pesan */}
-          <div className="bg-ink-800 border border-ink-600 rounded-xl p-3 space-y-3">
-            <p className="text-[10px] font-mono font-bold text-parchment-400 tracking-widest uppercase">
-              Posisi Teks Pesan
-            </p>
 
             <div>
               <div className="flex justify-between text-xs font-mono text-ink-200 mb-1">

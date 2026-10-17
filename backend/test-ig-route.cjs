@@ -130,11 +130,12 @@ const JPEG = Buffer.from([
   // akan membuat body tidak bisa diurai.
   const KIRIM = { Authorization: `Bearer ${token}`, 'X-Forwarded-For': '10.91.0.2' };
 
-  // Bangun multipart persis seperti browser.
+  // Bangun multipart persis seperti browser. Field `images` selalu array,
+  // termasuk untuk satu kartu pun — kontrak Task 5.
   const formDengan = ({ image = null, tipe = 'image/jpeg', caption = null } = {}) => {
     const fd = new FormData();
     if (image !== null) {
-      fd.append('image', new Blob([image], { type: tipe }), 'menfes.jpg');
+      fd.append('images', new Blob([image], { type: tipe }), 'menfes.jpg');
     }
     if (caption !== null) fd.append('caption', caption);
     return fd;
@@ -201,8 +202,45 @@ const JPEG = Buffer.from([
   check('body teks ditolak 415', r.status === 415, `HTTP ${r.status}`);
 
   r = await Kirim(approved.id, formDengan({}));
-  check('multipart tanpa field image ditolak 400', r.status === 400, `HTTP ${r.status}`);
+  check('multipart tanpa field images ditolak 400', r.status === 400, `HTTP ${r.status}`);
   check('pesan menyebut nama field', /image/.test((await r.clone().text()) || ''));
+
+  // Field `image` tunggal lama sudah diganti total: tidak ada dua jalur.
+  r = await Kirim(approved.id, (() => {
+    const fd = new FormData();
+    fd.append('image', new Blob([JPEG], { type: 'image/jpeg' }), 'menfes.jpg');
+    return fd;
+  })());
+  check('field image lama ditolak 400', r.status === 400, `HTTP ${r.status}`);
+  check('pesan menyebut field images', /images/.test(await r.clone().text()));
+  check('tidak ada panggilan publish', panggilan.length === 0);
+
+  // Lebih dari 10 kartu: 400 SEBELUM klaim, bukan error tengah jalan.
+  r = await Kirim(approved.id, (() => {
+    const fd = new FormData();
+    for (let i = 0; i < 11; i++) {
+      fd.append('images', new Blob([JPEG], { type: 'image/jpeg' }), `kartu-${i + 1}.jpg`);
+    }
+    return fd;
+  })());
+  check('11 file ditolak 400', r.status === 400, `HTTP ${r.status}`);
+  check('pesan menyebut batas 10', /10/.test(await r.clone().text()));
+  check('tidak ada panggilan publish', panggilan.length === 0);
+
+  // Banyak kartu sah diterima dan diteruskan utuh, berurutan.
+  r = await Kirim(approved.id, (() => {
+    const fd = new FormData();
+    for (let i = 0; i < 3; i++) {
+      fd.append('images', new Blob([JPEG], { type: 'image/jpeg' }), `kartu-${i + 1}.jpg`);
+    }
+    fd.append('caption', 'tiga kartu');
+    return fd;
+  })());
+  const body3 = await r.json();
+  check('3 kartu diterima 200', r.status === 200, `HTTP ${r.status} ${JSON.stringify(body3)}`);
+  check('terbitkan menerima 3 buffers', panggilan[0]?.buffers?.length === 3, String(panggilan[0]?.buffers?.length));
+  check('caption diteruskan', panggilan[0]?.caption === 'tiga kartu', panggilan[0]?.caption);
+  panggilan.length = 0;
 
   // ═══ 3. Validasi sebelum terbitan ═════════════════════════════════════════
   console.log('\n── 3. validasi menolak sebelum menyentuh Instagram ──');
@@ -264,9 +302,10 @@ const JPEG = Buffer.from([
 
   const arg = panggilan[0];
   check('menfesId benar', arg.menfesId === approved.id);
-  check('buffer gambar utuh byte per byte', arg.imageBuffer?.equals(JPEG) === true,
-    `${arg.imageBuffer?.length} byte, benar ${JPEG.length}`);
-  check('mime diteruskan apa adanya', arg.mimeType === 'image/jpeg', arg.mimeType);
+  check('buffer gambar utuh byte per byte',
+    arg.buffers?.length === 1 && arg.buffers[0].buffer?.equals(JPEG) === true,
+    `${arg.buffers?.[0]?.buffer?.length} byte, benar ${JPEG.length}`);
+  check('mime diteruskan apa adanya', arg.buffers?.[0]?.mimeType === 'image/jpeg', arg.buffers?.[0]?.mimeType);
   check('caption diteruskan mentah ke service', arg.caption === '  halo dunia  ', JSON.stringify(arg.caption));
 
   const barisAudit = auditLines().find((l) => l.includes('menfes.ig_publish')) || '';
