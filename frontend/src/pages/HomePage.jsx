@@ -14,18 +14,18 @@ const TIPE_FOTO_OK = ['image/jpeg', 'image/jpg', 'image/png'];
 // Bingkai foto lewat canvas SEBELUM preview, supaya byte yang dilihat = byte
 // yang dikirim. Empat hal terjadi sekaligus di sini: EXIF (termasuk lokasi
 // kamera) hilang karena canvas tidak pernah menyalin metadata; foto masuk
-// bingkai polaroid krem ala HarkatNekatt dengan RASIO ASLI foto — tidak
-// pernah dipotong atau dipaksa 4:5, cuma diskalakan; handle @harkatnekatt
-// di strip bawah; dan hasil JPEG-nya yang dikirim — server cukup menyimpan
-// apa adanya tanpa library pemrosesan gambar sama sekali.
+// bingkai polaroid krem ala HarkatNekatt (canvas portrait 4:5 tetap
+// 1080×1350, foto yang menyesuaikan — contain, tidak pernah dipotong);
+// handle @harkatnekatt di strip bawah; dan hasil JPEG-nya yang dikirim —
+// server cukup menyimpan apa adanya tanpa library pemrosesan gambar sama
+// sekali.
 //
 // Bingkai dipasang DI SINI (saat user memilih foto), bukan saat export:
 // preview yang dilihat user = hasil akhir yang jadi slide IG, tanpa
 // kejutan. Konsekuensinya foto asli tidak pernah disimpan — semua foto
 // yang sampai server sudah berbingkai.
+const FOTO_KANVAS = { w: 1080, h: 1350 }; // portrait 4:5, sama kayak template menfess
 const FOTO_PADDING = { x: 60, y: 60, bawah: 180 }; // bawah lebar = ruang handle
-const FOTO_DALAM_LEBAR = 960; // lebar area foto setelah padding 2×60
-const FOTO_DALAM_TINGGI_MAKS = 1360; // jaga total sisi terpanjang ≤ ~1600px
 
 async function bingkaiFoto(file) {
   const objUrl = URL.createObjectURL(file);
@@ -37,34 +37,34 @@ async function bingkaiFoto(file) {
       el.src = objUrl;
     });
 
-    // Ukuran foto di dalam bingkai = rasio asli foto. Portrait tinggi
-    // dibatasi lalu lebarnya menyesuaikan; landscape lebar dibatasi
-    // lebar (960) — hasilnya tidak pernah ada crop, hanya skala.
-    let dalamW = FOTO_DALAM_LEBAR;
-    let dalamH = dalamW * (img.naturalHeight / img.naturalWidth);
-    if (dalamH > FOTO_DALAM_TINGGI_MAKS) {
-      dalamH = FOTO_DALAM_TINGGI_MAKS;
-      dalamW = dalamH * (img.naturalWidth / img.naturalHeight);
-    }
-
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(dalamW) + FOTO_PADDING.x * 2;
-    canvas.height = Math.round(dalamH) + FOTO_PADDING.y + FOTO_PADDING.bawah;
+    canvas.width = FOTO_KANVAS.w;
+    canvas.height = FOTO_KANVAS.h;
     const ctx = canvas.getContext('2d');
 
-    // Latar krem = warna bingkai sekaligus jaring PNG berlubang (supaya
-    // tidak jadi kotak hitam).
+    // Latar krem = warna bingkai sekaligus letterbox (supaya tidak jadi
+    // kotak hitam kalau foto transparan / tidak mengisi penuh).
     ctx.fillStyle = '#F6EFDD';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.drawImage(img, FOTO_PADDING.x, FOTO_PADDING.y, dalamW, dalamH);
+    // Foto di-contain ke area dalam: canvas tetap 1080×1350, foto yang
+    // diskalakan jaga rasio asli, tidak pernah dipotong. Sisa ruang jadi
+    // letterbox krem. Center di dua sumbu.
+    const areaX = FOTO_PADDING.x;
+    const areaY = FOTO_PADDING.y;
+    const areaW = canvas.width - FOTO_PADDING.x * 2;
+    const areaH = canvas.height - FOTO_PADDING.y - FOTO_PADDING.bawah;
+    const skala = Math.min(areaW / img.naturalWidth, areaH / img.naturalHeight);
+    const gambarW = img.naturalWidth * skala;
+    const gambarH = img.naturalHeight * skala;
+    ctx.drawImage(img, areaX + (areaW - gambarW) / 2, areaY + (areaH - gambarH) / 2, gambarW, gambarH);
 
     // Handle di strip bawah, tengah, maroon — sama dengan palet template.
     ctx.fillStyle = '#7A1F2B';
     ctx.font = "bold 44px 'DM Sans', system-ui, sans-serif";
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('@harkatnekatt', canvas.width / 2, FOTO_PADDING.y + dalamH + FOTO_PADDING.bawah / 2);
+    ctx.fillText('@harkatnekatt', canvas.width / 2, areaY + areaH + FOTO_PADDING.bawah / 2);
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
     if (!blob) throw new Error('gagal mengubah gambar');
