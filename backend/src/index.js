@@ -13,6 +13,7 @@ const musicRoutes = require('./routes/music');
 const authMiddleware = require('./middleware/auth');
 const { router: telegramRouter, registerTelegramCallbacks } = require('./routes/telegram');
 const { initBot } = require('./services/telegramBot');
+const { initWa } = require('./services/waBot');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -87,6 +88,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     app: 'Menfes Harkat Nekat',
     telegram: !!process.env.TELEGRAM_BOT_TOKEN,
+    whatsapp: !!process.env.WA_ADMIN_NUMBER,
     timestamp: new Date().toISOString(),
   });
 });
@@ -140,6 +142,9 @@ app.listen(PORT, () => {
   // Init Telegram bot setelah server jalan
   initBot();
   registerTelegramCallbacks();
+  
+  // Init WhatsApp bot setelah server jalan
+  initWa();
 });
 
 module.exports = app;

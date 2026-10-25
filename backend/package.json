@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "dev": "node src/index.js",
     "build": "npx prisma generate",
     "postinstall": "npx prisma generate",
     "db:migrate": "npx prisma migrate dev",
@@ -27,7 +27,7 @@
     "test:ig": "node test-instagram-api.cjs",
     "test:ig-publish": "node test-ig-publish.cjs",
     "test:ig-route": "node test-ig-route.cjs",
-    "test:approve": "node test-approve.cjs",
+    "test: approve": "node test-approve.cjs",
     "test:site": "node test-site.cjs",
     "test:foto": "node test-foto.cjs",
     "test:music": "node test-music.cjs",
@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@whiskeysockets/baileys": "^6.7.24",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -47,6 +48,8 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "node-telegram-bot-api": "^0.66.0",
+    "pino": "^9.14.0",
+    "qrcode-terminal": "^0.12.0",
     "ytmusic-api": "^5.3.1"
   },
   "devDependencies": {

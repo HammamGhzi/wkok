@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { notifyNewMenfes } = require('../services/telegramBot');
+const { notifyNewMenfesWa } = require('../services/waBot');
 const prisma = require('../lib/prisma');
 const { unggahFoto, hapusFoto } = require('../lib/cloudinary');
 const cache = require('../lib/menfesCache');
@@ -186,6 +187,11 @@ async function submitMenfes(req, res) {
       notifyNewMenfes(menfes).catch((err) =>
         console.error('Telegram notif error (non-fatal):', err.message)
       );
+
+      // Kirim notifikasi WhatsApp ke admin (non-blocking — tidak ganggu response)
+      prisma.menfes.count({ where: { status: 'PENDING' } })
+        .then((pendingCount) => notifyNewMenfesWa({ menfes, pendingCount }))
+        .catch((err) => console.error('WhatsApp notif error (non-fatal):', err.message));
 
       // Response publik — JANGAN tampilkan info pengirim
       res.status(201).json({
