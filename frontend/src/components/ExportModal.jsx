@@ -349,25 +349,44 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   }
 
   async function handleDownloadFoto() {
+    const urls = menfes?.fotoUrls || [];
     setFotoDownloading(true);
+    let gagal = 0;
     try {
-      // Fetch dulu jadi blob: endpoint foto beda origin (Vercel ↔ Render),
-      // dan atribut `download` biasa diabaikan browser untuk cross-origin —
-      // hasilnya buka tab gambar, bukan mengunduh.
-      const res = await fetch(urlAset(menfes.fotoUrl));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const ext = (menfes.fotoUrl.split('.').pop() || 'jpg').toLowerCase();
-      a.download = `menfes-${kodeUnik}-foto.${ext}`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Foto pengirim berhasil diunduh.');
-    } catch (err) {
-      toast.error('Gagal download foto.');
-      console.error(err);
+      // Satu per satu, bukan Promise.all: browser membatasi unduhan serentak
+      // dan nama file berurutan lebih mudah dicocokkan dengan slide carousel.
+      for (let i = 0; i < urls.length; i++) {
+        try {
+          // Fetch dulu jadi blob: endpoint foto beda origin (Vercel ↔ Render),
+          // dan atribut `download` biasa diabaikan browser untuk cross-origin —
+          // hasilnya buka tab gambar, bukan mengunduh.
+          const res = await fetch(urlAset(urls[i]));
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          const ext = (urls[i].split('.').pop() || 'jpg').toLowerCase();
+          a.download = `menfes-${kodeUnik}-foto-${i + 1}.${ext}`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          gagal += 1;
+          console.error(err);
+        }
+        if (i < urls.length - 1) await new Promise((r) => setTimeout(r, 400));
+      }
+      if (!urls.length || gagal === urls.length) {
+        toast.error('Gagal download foto.');
+      } else if (gagal) {
+        toast.error(`${gagal} dari ${urls.length} foto gagal diunduh.`);
+      } else {
+        toast.success(
+          urls.length > 1
+            ? `${urls.length} foto berhasil diunduh.`
+            : 'Foto pengirim berhasil diunduh.'
+        );
+      }
     } finally {
       setFotoDownloading(false);
     }
@@ -409,13 +428,19 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
       // hitungKartu dipanggil sekali di handler ini; hasilnya dipakai lagi
       // oleh renderSemuaBlob supaya tidak dihitung dobel.
       const kartu = await hitungDariPesan();
-      // Lampiran pengirim (foto atau video) ikut jadi anak carousel, jadi
-      // jumlah anak = kartu + 1 kalau ada lampiran. Guard-nya di sini juga,
-      // bukan hanya jumlah kartu.
+      // Lampiran pengirim (foto dan/atau video) ikut jadi anak carousel, jadi
+      // jumlah anak = kartu + tiap foto + video. Guard-nya di sini juga, bukan
+      // hanya jumlah kartu — lebih jujur menolak daripada memotong lampiran.
       const jumlahAnak =
-        kartu.totalParts + (menfes?.fotoUrl ? 1 : 0) + (menfes?.videoUrl ? 1 : 0);
+        kartu.totalParts +
+        (menfes?.fotoUrls?.length || 0) +
+        (menfes?.videoUrl ? 1 : 0);
       if (jumlahAnak > 10) {
-        toast.error('Instagram feed maksimal 10 kartu — pesan terlalu panjang, pangkas dulu.');
+        toast.error(
+          `Instagram feed maksimal 10 slide — ${kartu.totalParts} kartu + ` +
+            `${(menfes?.fotoUrls?.length || 0) + (menfes?.videoUrl ? 1 : 0)} lampiran. ` +
+            'Pangkas pesan atau kurangi lampiran.'
+        );
         return;
       }
       const blobs = await renderSemuaBlob(kartu);
@@ -810,62 +835,72 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
             )}
           </div>
 
-          {/* Foto pengirim — slide kedua carousel. Hanya muncul kalau menfes
-              punya foto. Kalau filenya hilang di server, section ini jujur
-              bilang begitu; post IG tetap jalan dengan fallback kartu-saja. */}
-          {menfes?.fotoUrl && (
+          {/* Foto pengirim — slide setelah kartu, berurutan. Hanya muncul kalau
+              menfes punya foto. Kalau ada filenya hilang di server, section ini
+              jujur bilang begitu; post IG tetap jalan dengan fallback kartu-saja. */}
+          {(menfes?.fotoUrls?.length || 0) > 0 && (
             <div className="bg-ink-800 border border-ink-600 rounded-xl p-3">
               <div className="flex justify-between items-baseline mb-1.5">
                 <p className="text-[10px] font-mono font-bold text-ink-200 tracking-widest uppercase">
-                  Foto Pengirim — Slide 2
+                  Foto Pengirim ({menfes.fotoUrls.length})
                 </p>
                 <span className="text-[10px] font-mono text-brand-400 bg-brand-950/60 border border-brand-800/60 px-2 py-0.5 rounded-md">
                   CAROUSEL
                 </span>
               </div>
 
-              {fotoHilang ? (
-                <p className="text-[11px] font-mono text-amber-400 leading-relaxed">
-                  File foto tidak ditemukan di server. Post ke IG tetap bisa —
-                  kartu tayang tanpa foto.
+              <div className="grid grid-cols-2 gap-2">
+                {menfes.fotoUrls.map((url, i) => (
+                  <div key={url} className="relative">
+                    <img
+                      src={urlAset(url)}
+                      alt={`Foto pengirim ${i + 1}`}
+                      onError={() => setFotoHilang(true)}
+                      className="w-full h-28 object-cover rounded-lg bg-ink-900 border border-ink-600"
+                    />
+                    <span className="absolute bottom-1 left-1 text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/60 text-white">
+                      Slide {i + 2}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {fotoHilang && (
+                <p className="text-[11px] font-mono text-amber-400 leading-relaxed mt-1.5">
+                  Sebagian file foto tidak ditemukan di server. Post ke IG tetap
+                  bisa — slide yang hilang dilewati.
                 </p>
-              ) : (
-                <>
-                  <img
-                    src={urlAset(menfes.fotoUrl)}
-                    alt="Foto pengirim"
-                    onError={() => setFotoHilang(true)}
-                    className="w-full max-h-56 object-contain rounded-lg bg-ink-900 border border-ink-600"
-                  />
-                  <p className="text-[10px] text-ink-200 font-mono mt-1.5">
-                    Ikut tayang sebagai slide kedua setelah kartu. Diunduh apa
-                    adanya dari server buat post manual.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleDownloadFoto}
-                    disabled={fotoDownloading || sibuk}
-                    className="mt-2 w-full btn-secondary font-mono text-xs flex items-center justify-center gap-2 py-2.5 touch-manipulation disabled:opacity-40"
-                  >
-                    {fotoDownloading ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Mengunduh...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        Download Foto
-                      </>
-                    )}
-                  </button>
-                </>
               )}
+
+              <p className="text-[10px] text-ink-200 font-mono mt-1.5">
+                Ikut tayang berurutan setelah kartu. Diunduh apa adanya dari
+                server buat post manual.
+              </p>
+              <button
+                type="button"
+                onClick={handleDownloadFoto}
+                disabled={fotoDownloading || sibuk}
+                className="mt-2 w-full btn-secondary font-mono text-xs flex items-center justify-center gap-2 py-2.5 touch-manipulation disabled:opacity-40"
+              >
+                {fotoDownloading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Mengunduh...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    {menfes.fotoUrls.length > 1
+                      ? `Download Semua Foto (${menfes.fotoUrls.length})`
+                      : 'Download Foto'}
+                  </>
+                )}
+              </button>
             </div>
           )}
 

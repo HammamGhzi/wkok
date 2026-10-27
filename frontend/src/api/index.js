@@ -50,7 +50,7 @@ export const musicAPI = {
 };
 
 // ── URL file statis (foto pengirim) ───────────────────────────────────────
-// Dua bentuk di kolom fotoUrl: URL absolut Cloudinary (baris baru) dilewatkan
+// Dua bentuk di kolom fotoUrls: URL absolut Cloudinary (baris baru) dilewatkan
 // apa adanya, dan path relatif ('/uploads/foto/...', baris lama) menempel ke
 // base API. BASE_URL selalu berujung '/api' — file statis dilayani tanpa
 // prefix itu, jadi '/api' dibuang dulu sebelum path ditempel.

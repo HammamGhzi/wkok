@@ -100,14 +100,14 @@ async function getAllMenfes(req, res) {
           ipHash: true,
           // Status publikasi Instagram. igImageUrl sengaja tidak ikut: itu
           // alamat file di server kita dan tidak berguna di dashboard.
-          // fotoUrl JUSTRU ikut: thumbnail kiriman foto di kartu dashboard.
+          // fotoUrls JUSTRU ikut: thumbnail kiriman foto di kartu dashboard.
           igStatus: true,
           igMediaId: true,
           igPermalink: true,
           igCaption: true,
           igError: true,
           igPublishedAt: true,
-          fotoUrl: true,
+          fotoUrls: true,
           videoUrl: true,
           // Lagu pilihan pengirim — hanya di sini (dashboard). API publik
           // sengaja tidak memilih kolom ini sama sekali.
@@ -276,7 +276,7 @@ async function deleteMenfes(req, res) {
     }
 
     await prisma.menfes.delete({ where: { id } });
-    hapusFoto(menfes.fotoUrl);
+    for (const url of menfes.fotoUrls || []) hapusFoto(url);
     hapusVideo(menfes.videoUrl);
 
     audit('menfes.delete', req, { menfesId: id });

@@ -642,23 +642,30 @@ export default function AdminDashboardPage() {
                       <span className="text-brand-600 text-lg leading-none select-none">"</span>
                     </div>
 
-                    {/* Foto pengirim — slide kedua di post IG; tampil hanya di sini dan IG. */}
-                    {item.fotoUrl && (
-                      <div className="flex items-center gap-2.5">
-                        <a
-                          href={urlAset(item.fotoUrl)}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Klik untuk lihat foto penuh"
-                        >
-                          <img
-                            src={urlAset(item.fotoUrl)}
-                            alt="Foto pengirim"
-                            className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-lg border border-ink-600 hover:border-brand-500 transition-colors bg-ink-800"
-                          />
-                        </a>
+                    {/* Foto pengirim — slide setelah kartu di post IG; tampil
+                        hanya di sini dan IG. Semua foto ditampilkan supaya
+                        admin tahu urutan yang akan tayang. */}
+                    {(item.fotoUrls?.length || 0) > 0 && (
+                      <div className="flex items-start gap-2.5">
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.fotoUrls.map((url, i) => (
+                            <a
+                              key={url}
+                              href={urlAset(url)}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={`Foto ${i + 1} — klik untuk lihat penuh`}
+                            >
+                              <img
+                                src={urlAset(url)}
+                                alt={`Foto pengirim ${i + 1}`}
+                                className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-lg border border-ink-600 hover:border-brand-500 transition-colors bg-ink-800"
+                              />
+                            </a>
+                          ))}
+                        </div>
                         <span className="text-[10px] font-mono text-ink-300 leading-relaxed">
-                          Foto pengirim<br />
+                          {item.fotoUrls.length} foto pengirim<br />
                           <span className="text-ink-400">klik untuk lihat penuh</span>
                         </span>
                       </div>

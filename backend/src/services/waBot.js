@@ -128,7 +128,7 @@ async function initWa() {
 
 /**
  * Kirim notifikasi ke admin saat ada menfess baru masuk
- * Format: 1 pesan dengan foto ATAU video (jika ada) + caption berisi info lengkap
+ * Format: 1 pesan per foto (caption di foto pertama), lalu video (jika ada)
  */
 async function notifyNewMenfesWa({ menfes, pendingCount }) {
   if (!sock || !isConnected) return;
@@ -144,8 +144,10 @@ async function notifyNewMenfesWa({ menfes, pendingCount }) {
     let caption = `Ada Menfess baru nih!\n\n`;
     caption += `Pesan: ${menfes.message}\n\n`;
     
-    if (menfes.fotoUrl) {
-      caption += `Foto: Ada\n`;
+    const fotoUrls = menfes.fotoUrls || [];
+
+    if (fotoUrls.length) {
+      caption += `Foto: ${fotoUrls.length}\n`;
     }
     
     if (menfes.videoUrl) {
@@ -160,19 +162,28 @@ async function notifyNewMenfesWa({ menfes, pendingCount }) {
     caption += `ID: ${menfes.id}\n`;
     caption += `Total Pending: ${pendingCount}`;
     
-    // Jika ada foto, kirim foto dengan caption
-    if (menfes.fotoUrl) {
+    // Caption hanya sekali: di media pertama yang berhasil terkirim, supaya
+    // grup tidak dibanjiri teks yang sama berulang.
+    let captionTerkirim = false;
+    let videoTerkirim = false;
+
+    // Foto: Baileys tidak punya album yang andal, jadi kirim satu per satu.
+    for (const url of fotoUrls) {
       try {
-        const buffer = await fetchBuffer(menfes.fotoUrl);
+        const buffer = await fetchBuffer(url);
         await sock.sendMessage(groupJid, {
           image: buffer,
-          caption: caption,
+          ...(captionTerkirim ? {} : { caption }),
         });
+        captionTerkirim = true;
       } catch (imgErr) {
-        console.error('Gagal kirim foto ke WA, kirim teks aja:', imgErr.message);
-        await sock.sendMessage(groupJid, { text: caption });
+        console.error('Gagal kirim foto ke WA:', imgErr.message);
       }
-    } else if (menfes.videoUrl) {
+    }
+
+    // Video selalu setelah semua foto — sama seperti slide terakhir di carousel
+    // Instagram.
+    if (menfes.videoUrl) {
       try {
         // Turunkan ke 720 px supaya muat batas media WhatsApp; frame dan
         // handle ikut mengecil proporsional, jadi tetap sama bentuknya.
@@ -184,15 +195,23 @@ async function notifyNewMenfesWa({ menfes, pendingCount }) {
         await sock.sendMessage(groupJid, {
           video: buffer,
           mimetype: 'video/mp4',
-          caption: caption,
+          ...(captionTerkirim ? {} : { caption }),
         });
+        captionTerkirim = true;
+        videoTerkirim = true;
       } catch (videoErr) {
         console.error('Gagal kirim video ke WA, kirim tautan:', videoErr.message);
-        await sock.sendMessage(groupJid, {
-          text: `${caption}\n\nVideo: ${menfes.videoUrl}`,
-        });
       }
-    } else {
+    }
+
+    // Video gagal dikirim sebagai media -> tautannya tetap diteruskan, jangan
+    // hilang dari notifikasi. Kalau sama sekali belum ada yang terkirim,
+    // caption ikut di pesan teks ini.
+    if (menfes.videoUrl && !videoTerkirim) {
+      await sock.sendMessage(groupJid, {
+        text: captionTerkirim ? `Video: ${menfes.videoUrl}` : `${caption}\n\nVideo: ${menfes.videoUrl}`,
+      });
+    } else if (!captionTerkirim) {
       await sock.sendMessage(groupJid, { text: caption });
     }
     

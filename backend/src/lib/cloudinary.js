@@ -128,7 +128,7 @@ async function unggah(jenis, buffer, mimeType, publicId, ekstensi, tambahan = {}
 
 /**
  * Unggah satu foto. Mengembalikan { url, publicId } — url inilah yang disimpan
- * ke kolom fotoUrl (absolut, tidak lagi tergantung base URL manapun).
+ * ke kolom fotoUrls (absolut, tidak lagi tergantung base URL manapun).
  */
 async function unggahFoto(buffer, mimeType, publicId, ekstensi) {
   const data = await unggah('image', buffer, mimeType, publicId, ekstensi);

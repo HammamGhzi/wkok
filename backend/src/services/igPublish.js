@@ -179,7 +179,7 @@ async function klaimKerja(menfesId) {
 async function ambilStatus(menfesId) {
   return prisma.menfes.findUnique({
     where: { id: menfesId },
-    select: { igStatus: true, igMediaId: true, igPermalink: true, status: true, fotoUrl: true, videoUrl: true },
+    select: { igStatus: true, igMediaId: true, igPermalink: true, status: true, fotoUrls: true, videoUrl: true },
   });
 }
 
@@ -239,13 +239,9 @@ async function tungguContainerSelesai(creationId, timeoutMs = 30000, intervalMs 
  *        kartu berurutan (1-10), hasil canvas.toBlob dari browser. Urutan
  *        array = urutan slide di feed.
  * @param {string} [args.caption]    caption pilihan admin
- * @param {string} [args.fotoOpsional]
- *        URL foto pengirim. Opsional: kalau tidak dikirim, sumbernya kolom
- *        fotoUrl menfes seperti jalur lama, jadi pemanggil tidak perlu
- *        membaca kolom itu sendiri.
  * @returns {Promise<{mediaId: string, permalink: string|null, imageUrl: string, peringatan: string|null}>}
  */
-async function terbitkan({ menfesId, buffers, caption, fotoOpsional }) {
+async function terbitkan({ menfesId, buffers, caption }) {
   // Validasi SEMUA kartu SEBELUM klaim. Alasannya sama seperti periksaGambar
   // di controller: input salah adalah kesalahan admin dan harus berhenti di
   // sini — tanpa klaim, tanpa file di disk, tanpa perubahan status menfes.
@@ -276,15 +272,16 @@ async function terbitkan({ menfesId, buffers, caption, fotoOpsional }) {
     throw e;
   }
 
-  // Lampiran (foto/video) jadi anak terakhir carousel — ikut dihitung terhadap
-  // batas 10 anak Instagram, bukan cuma jumlah kartu. Dihitung SETELAH baris
-  // dibaca karena video tidak dikirim pemanggil, melainkan diambil dari kolom
-  // videoUrl.
-  const jumlahLampiran = (fotoOpsional ? 1 : 0) + (ada.videoUrl ? 1 : 0);
+  // Lampiran (foto/video) jadi anak SETELAH kartu, ikut dihitung terhadap batas
+  // 10 anak Instagram, bukan cuma jumlah kartu. Dihitung SETELAH baris dibaca
+  // karena lampiran tidak dikirim pemanggil, melainkan diambil dari kolom
+  // fotoUrls/videoUrl.
+  const fotoMentah = ada.fotoUrls || [];
+  const jumlahLampiran = fotoMentah.length + (ada.videoUrl ? 1 : 0);
   if (kartu.length + jumlahLampiran > 10) {
     const e = new Error(
       `Total anak carousel ${kartu.length + jumlahLampiran} buah (kartu + lampiran), ` +
-        'batas Instagram 10 gambar.'
+        'batas Instagram 10 gambar. Pangkas pesan atau kurangi lampiran.'
     );
     e.kode = 'INPUT_SALAH';
     throw e;
@@ -338,18 +335,17 @@ async function terbitkan({ menfesId, buffers, caption, fotoOpsional }) {
     });
 
     // ── Kartu tunggal ATAU carousel ─────────────────────────────────────────
-    // Foto pengirim (kalau ada) dan jumlah kartu menentukan jalurnya. Tanpa
-    // foto dan hanya satu kartu, perilakunya persis seperti sebelum fitur ini
-    // ada: satu container ber-caption. Selain itu post jadi carousel — caption
-    // hanya di container induk, semua anak tanpa caption.
-    // Dua bentuk fotoUrl: URL Cloudinary absolut (baris baru) dipakai apa
-    // adanya; path relatif lama ('/uploads/foto/...') menempel ke base publik.
-    const fotoMentah = fotoOpsional ?? ada.fotoUrl;
-    const urlFoto = !fotoMentah
-      ? null
-      : /^https:\/\//.test(fotoMentah)
-        ? fotoMentah
-        : `${baseUrlPublik()}${fotoMentah}`;
+    // Jumlah kartu + lampiran menentukan jalurnya: tanpa lampiran dan hanya
+    // satu kartu, satu container ber-caption seperti sebelum fitur ini ada.
+    // Selain itu post jadi carousel — caption hanya di container induk, semua
+    // anak tanpa caption.
+    //
+    // Lampiran: foto berurutan, video selalu terakhir. Dua bentuk URL foto:
+    // absolut Cloudinary (baris baru) dipakai apa adanya; path relatif lama
+    // ('/uploads/foto/...') menempel ke base publik.
+    const urlFotos = fotoMentah.map((u) =>
+      /^https:\/\//.test(u) ? u : `${baseUrlPublik()}${u}`
+    );
 
     // Video selalu URL Cloudinary absolut (hasil eager upload), jadi tidak ada
     // bentuk path relatif lama yang perlu ditempel base URL.
@@ -385,7 +381,7 @@ async function terbitkan({ menfesId, buffers, caption, fotoOpsional }) {
       creationIdFinal = creationId;
     };
 
-    if (tersimpan.length === 1 && !urlFoto && !urlVideo) {
+    if (tersimpan.length === 1 && urlFotos.length === 0 && !urlVideo) {
       // Jalur lama, tanpa perubahan: satu container ber-caption, satu publish.
       // Sengaja BUKAN carousel berisi satu anak — Instagram hanya menerima
       // carousel berisi 2-10 anak, dan membuat container induk hanya untuk
@@ -421,26 +417,36 @@ async function terbitkan({ menfesId, buffers, caption, fotoOpsional }) {
           children.push(creationId);
         }
 
-        if (urlFoto) {
-          try {
-            tahap = 'container_foto';
-            const { creationId: anakFoto } = await ig.createImageContainer({
-              imageUrl: urlFoto,
-            });
-            tahap = 'tunggu_container_foto';
-            await tunggu(anakFoto);
-            children.push(anakFoto);
-          } catch (errFoto) {
-            // 1 kartu: sisa kartunya cuma satu, jadi publikasikan sebagai
-            // kartu tunggal ber-caption. Lebih dari 1 kartu: semua kartu tetap
-            // tayang sebagai carousel utuh, hanya foto yang gugur.
-            if (tersimpan.length === 1) {
-              await jatuhKeKartuTunggal(errFoto.message);
+        if (urlFotos.length > 0) {
+          // Satu foto gagal tidak membatalkan foto lain: kumpulkan kegagalan,
+          // lalu putuskan sekali di akhir.
+          const gagal = [];
+          for (let i = 0; i < urlFotos.length; i++) {
+            try {
+              tahap = 'container_foto';
+              const { creationId: anakFoto } = await ig.createImageContainer({
+                imageUrl: urlFotos[i],
+              });
+              tahap = 'tunggu_container_foto';
+              await tunggu(anakFoto);
+              children.push(anakFoto);
+            } catch (errFoto) {
+              gagal.push(`foto ${i + 1}: ${errFoto.message}`);
+            }
+          }
+
+          if (gagal.length > 0) {
+            // 1 kartu + SEMUA foto gugur + tidak ada video: sisa kartunya cuma
+            // satu, jadi publikasikan sebagai kartu tunggal ber-caption. Kalau
+            // ada video, carousel masih layak (kartu + video) — jangan buang
+            // videonya karena foto gagal.
+            if (tersimpan.length === 1 && gagal.length === urlFotos.length && !urlVideo) {
+              await jatuhKeKartuTunggal(gagal[0]);
             } else {
               peringatan =
-                `Foto tidak bisa diproses jadi carousel (${errFoto.message}). ` +
-                'Kartu tayang tanpa foto.';
-              console.warn('IG carousel fallback:', errFoto.message);
+                `${gagal.length} dari ${urlFotos.length} foto tidak bisa diproses ` +
+                `jadi carousel (${gagal.join('; ')}). Kartu tayang tanpa foto itu.`;
+              console.warn('IG carousel fallback:', gagal.join('; '));
             }
           }
         }
@@ -460,7 +466,9 @@ async function terbitkan({ menfesId, buffers, caption, fotoOpsional }) {
           } catch (errVideo) {
             // Perlakuan sama dengan foto: video adalah pelengkap, kartu teks
             // tetap yang utama. Jangan tahan seluruh post karena satu slide.
-            if (tersimpan.length === 1) {
+            // Jatuh ke kartu tunggal hanya kalau tidak ada anak lain sama
+            // sekali — kalau foto berhasil, carousel tetap bisa terbit.
+            if (tersimpan.length === 1 && children.length === 1) {
               await jatuhKeKartuTunggal(errVideo.message, 'Video');
             } else {
               peringatan =

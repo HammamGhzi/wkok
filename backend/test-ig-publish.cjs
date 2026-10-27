@@ -270,7 +270,7 @@ async function main() {
   reset();
   baris = {
     id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
-    status: 'APPROVED', fotoUrl: '/uploads/foto/foto-uji.png',
+    status: 'APPROVED', fotoUrls: ['/uploads/foto/foto-uji.png'],
   };
   const rFoto = await igPublish.terbitkan({
     menfesId: 'M1',
@@ -347,7 +347,7 @@ async function main() {
   const fotoAbsolut = 'https://res.cloudinary.com/uji-foto/image/upload/v1767123/foto-abc123.png';
   baris = {
     id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
-    status: 'APPROVED', fotoUrl: fotoAbsolut,
+    status: 'APPROVED', fotoUrls: [fotoAbsolut],
   };
   await igPublish.terbitkan({
     menfesId: 'M1',
@@ -358,13 +358,102 @@ async function main() {
   check('foto absolut dipakai apa adanya, tanpa base publik ditempel',
     anakAbs[1]?.args.imageUrl === fotoAbsolut, anakAbs[1]?.args.imageUrl);
 
+  // ─── 6c2. Multi foto + video: urutan slide terjaga ─────────────────────────
+  console.log('\n== multi foto + video ==');
+  reset();
+  const foto2 = 'https://res.cloudinary.com/uji-foto/image/upload/v1767123/foto-def456.png';
+  const foto3 = 'https://res.cloudinary.com/uji-foto/image/upload/v1767123/foto-ghi789.png';
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED',
+    fotoUrls: [fotoAbsolut, foto2, foto3],
+    videoUrl: videoAbsolut,
+  };
+  const rMulti = await igPublish.terbitkan({
+    menfesId: 'M1',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
+    caption: 'campur',
+  });
+  const anakMulti = igCalls.filter((c) => c.fn === 'createImageContainer');
+  const videoMulti = igCalls.filter((c) => c.fn === 'createVideoContainer');
+  const indukMulti = igCalls.filter((c) => c.fn === 'createCarouselContainer');
+  check('1 kartu + 3 foto = 4 container gambar', anakMulti.length === 4, String(anakMulti.length));
+  check('tiga foto dipakai berurutan',
+    anakMulti[1]?.args.imageUrl === fotoAbsolut &&
+      anakMulti[2]?.args.imageUrl === foto2 &&
+      anakMulti[3]?.args.imageUrl === foto3,
+    JSON.stringify(anakMulti.map((c) => c.args.imageUrl)));
+  check('video jadi anak terakhir, total 5 anak',
+    indukMulti[0]?.args.children?.length === 5 &&
+      indukMulti[0].args.children[4] === 'VIDEO-CREATION-XYZ',
+    JSON.stringify(indukMulti[0]?.args.children));
+  check('video carousel tanpa caption sendiri', videoMulti[0]?.args.caption === undefined);
+  check('tanpa peringatan kalau campuran lancar', rMulti.peringatan === null, String(rMulti.peringatan));
+
+  // Satu foto gagal: sisanya tetap tayang, kegagalan diucapkan lewat peringatan.
+  console.log('\n== multi foto: satu gagal ==');
+  reset();
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED',
+    fotoUrls: [fotoAbsolut, foto2, foto3],
+  };
+  const asliCreateFoto = igStub.createImageContainer;
+  let nomorContainer = 0;
+  igStub.createImageContainer = async (args) => {
+    nomorContainer += 1;
+    if (nomorContainer === 2) throw new Error('foto kedua ditolak');
+    return asliCreateFoto(args);
+  };
+  const rSebagian = await igPublish.terbitkan({
+    menfesId: 'M1',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
+    caption: 'sebagian',
+  });
+  igStub.createImageContainer = asliCreateFoto;
+  check('peringatan menyebut 1 dari 3 foto',
+    /1 dari 3 foto/.test(rSebagian.peringatan || ''), rSebagian.peringatan);
+  check('carousel tetap terbit dengan sisa slide',
+    igCalls.find((c) => c.fn === 'publishContainer')?.id === 'CAROUSEL-INDUK-1');
+
+  // Semua foto gagal TAPI ada video: carousel tetap layak (kartu + video),
+  // jadi jangan jatuh ke kartu tunggal dan membuang videonya.
+  console.log('\n== semua foto gagal, video tetap tayang ==');
+  reset();
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED',
+    fotoUrls: [fotoAbsolut],
+    videoUrl: videoAbsolut,
+  };
+  const asliCreateSemua = igStub.createImageContainer;
+  igStub.createImageContainer = async (args) => {
+    if (args.imageUrl === fotoAbsolut) throw new Error('foto ditolak');
+    return asliCreateSemua(args);
+  };
+  const rFotoGagalVideo = await igPublish.terbitkan({
+    menfesId: 'M1',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
+    caption: 'kartu dan video',
+  });
+  igStub.createImageContainer = asliCreateSemua;
+  const indukFG = igCalls.filter((c) => c.fn === 'createCarouselContainer');
+  check('carousel kartu + video tetap dibuat',
+    indukFG.length === 1 && indukFG[0].args.children.length === 2,
+    JSON.stringify(indukFG[0]?.args.children));
+  check('video tidak hilang padahal semua foto gagal',
+    indukFG[0]?.args.children?.[1] === 'VIDEO-CREATION-XYZ');
+  check('foto yang gagal tetap dilaporkan',
+    /tidak bisa diproses/.test(rFotoGagalVideo.peringatan || ''),
+    rFotoGagalVideo.peringatan);
+
   // Kegagalan membangun carousel: kartu TETAP tayang tanpa foto, dengan
   // peringatan terbuka — bukan gagal total dan bukan ditelan diam-diam.
   console.log('\n== carousel gagal -> fallback kartu tunggal ==');
   reset();
   baris = {
     id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
-    status: 'APPROVED', fotoUrl: '/uploads/foto/foto-uji.png',
+    status: 'APPROVED', fotoUrls: ['/uploads/foto/foto-uji.png'],
   };
   jebakan = 'carousel';
   const rFallback = await igPublish.terbitkan({
@@ -388,7 +477,7 @@ async function main() {
   reset();
   baris = {
     id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
-    status: 'APPROVED', fotoUrl: '/uploads/foto/foto-uji.png',
+    status: 'APPROVED', fotoUrls: ['/uploads/foto/foto-uji.png'],
   };
   const K3 = [
     { buffer: Buffer.from('kartu-1'), mimeType: 'image/jpeg' },
@@ -444,6 +533,24 @@ async function main() {
     prismaCalls.map((c) => c.op).join(',')
   );
   check('Instagram tidak dipanggil', igCalls.length === 0);
+
+  // Lampiran juga memakan jatah 10 anak: 8 kartu + 3 foto + 1 video = 12.
+  reset();
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED', fotoUrls: ['a.png', 'b.png', 'c.png'], videoUrl: videoAbsolut,
+  };
+  const delapan = Array.from({ length: 8 }, () => ({ buffer: JPEG, mimeType: 'image/jpeg' }));
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: delapan }));
+  check('8 kartu + 3 foto + video ditolak', e !== null && e.kode === 'INPUT_SALAH', e?.kode);
+  check('pesan menyebut jumlah anak carousel',
+    /12 buah/.test(e?.message || ''), e?.message);
+  check(
+    'ditolak sebelum klaim meski lampiran ikut dihitung',
+    prismaCalls.length === 1 && prismaCalls[0].op === 'findUnique',
+    prismaCalls.map((c) => c.op).join(',')
+  );
+  check('Instagram tidak dipanggil saat lampiran melebihi batas', igCalls.length === 0);
 
   // ─── 7. Kegagalan di tiap tahap ────────────────────────────────────────────
   console.log('\n== kegagalan ==');

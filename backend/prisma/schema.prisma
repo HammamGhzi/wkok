@@ -69,21 +69,23 @@ model Menfes {
   igError      String?
   igPublishedAt DateTime?
 
-  // ── Foto opsional dari pengirim ────────────────────────────────────────────
+  // ── Foto opsional dari pengirim (maks 4) ───────────────────────────────────
   // URL absolut ke Cloudinary ('https://res.cloudinary.com/.../foto-<hex>.png')
   // supaya asetnya bertahan lepas dari disk server (disk Render hapus tiap
   // redeploy, sedangkan Meta bisa meminta fotonya berjam-jam kemudian).
-  // NULL = tanpa foto (post IG jadi kartu tunggal). Nilai lama berupa path
-  // relatif ('/uploads/foto/<namafile>') masih ditangani semua pembaca.
+  // Array kosong = tanpa foto. Nilai lama berupa path relatif
+  // ('/uploads/foto/<namafile>') masih ditangani semua pembaca.
+  // Urutan array = urutan slide di carousel Instagram.
   // Foto TIDAK pernah ikut di response API publik — hanya dashboard dan
   // jalur publish Instagram yang membacanya.
-  fotoUrl String?
+  fotoUrls String[] @default([])
 
-  // ── Video opsional dari pengirim ───────────────────────────────────────────
-  // Satu lampiran saja: foto ATAU video, tidak dua-duanya. Isinya URL absolut
-  // Cloudinary hasil transformasi yang sudah dibingkai + dinormalkan ke MP4
-  // H.264 (lihat FRAME_VIDEO di lib/cloudinary.js), jadi yang disimpan adalah
-  // bentuk final yang diterima Instagram. NULL = tanpa video.
+  // ── Video opsional dari pengirim (maks 1) ──────────────────────────────────
+  // Boleh berdampingan dengan foto; video selalu jadi slide TERAKHIR carousel.
+  // Isinya URL absolut Cloudinary hasil transformasi yang sudah dibingkai +
+  // dinormalkan ke MP4 H.264 (lihat FRAME_VIDEO di lib/cloudinary.js), jadi
+  // yang disimpan adalah bentuk final yang diterima Instagram. NULL = tanpa
+  // video.
   videoUrl String?
 
   // ── Lagu pilihan pengirim (opsional) ───────────────────────────────────────

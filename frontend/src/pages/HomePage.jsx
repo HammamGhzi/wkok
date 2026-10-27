@@ -9,15 +9,18 @@ const MAX_CHARS = 500;
 
 // ── Batas foto pengirim ─────────────────────────────────────────────────────
 const UKURAN_FOTO_MAKS = 5 * 1024 * 1024;
+const FOTO_MAKS = 4;
 const TIPE_FOTO_OK = ['image/jpeg', 'image/jpg', 'image/png'];
 
 // ── Batas video lampiran pengirim ──────────────────────────────────────────
-// Satu lampiran saja: foto ATAU video. Batas 25 MB menjaga unggahan tetap
-// masuk akal untuk video HP 30-60 detik (Cloudinary free plan sendiri berhenti
-// di 100 MB per video). Batas durasi 3-60 detik berasal dari syarat Instagram;
-// server tidak memeriksanya — file yang lolos ke sini divalidasi lagi di form,
-// dan Instagram yang terakhir menolak.
+// Maks 1 video, boleh berdampingan dengan foto. Batas 25 MB menjaga unggahan
+// tetap masuk akal untuk video HP 30-60 detik (Cloudinary free plan sendiri
+// berhenti di 100 MB per video). Batas durasi 3-60 detik berasal dari syarat
+// Instagram; server tidak memeriksanya — file yang lolos ke sini divalidasi
+// lagi di form, dan Instagram yang terakhir menolak.
 const UKURAN_VIDEO_MAKS = 25 * 1024 * 1024;
+// 4 foto (4x5 MB) + 1 video (25 MB).
+const UKURAN_TOTAL_MAKS = 45 * 1024 * 1024;
 const TIPE_VIDEO_OK = ['video/mp4', 'video/quicktime', 'video/webm'];
 const DURASI_VIDEO_MIN = 3;
 const DURASI_VIDEO_MAKS = 60;
@@ -287,17 +290,17 @@ export default function HomePage() {
   // Lagu pilihan pengirim (step 4). Null = tanpa lagu — fieldnya tidak ikut
   // dikirim, server menyimpan kolom music sebagai NULL.
   const [music, setMusic] = useState(null);
-  // Foto opsional pengirim. Null = tanpa foto (perilaku persis seperti
-  // sebelum fitur ini ada). Yang disimpan adalah HASIL re-encode, jadi
-  // pratinjau menampilkan byte yang benar-benar akan dikirim.
-  const [foto, setFoto] = useState(null);
-  const fotoPreview = useMemo(
-    () => (foto ? URL.createObjectURL(foto) : null),
-    [foto]
+  // Foto opsional pengirim (maks 4). Kosong = tanpa foto. Yang disimpan adalah
+  // HASIL re-encode, jadi pratinjau menampilkan byte yang benar-benar akan
+  // dikirim. Urutan array = urutan slide carousel.
+  const [fotos, setFotos] = useState([]);
+  const fotoPreviews = useMemo(
+    () => fotos.map((f) => URL.createObjectURL(f)),
+    [fotos]
   );
-  // Video opsional pengirim. Saling eksklusif dengan foto: memilih salah satu
-  // mengosongkan yang lain. Yang dikirim adalah file ASLI — frame dan konversi
-  // ke MP4 dikerjakan Cloudinary saat upload, bukan direkam ulang di browser.
+  // Video opsional pengirim (maks 1), boleh berdampingan dengan foto dan selalu
+  // jadi slide terakhir. Yang dikirim adalah file ASLI — frame dan konversi ke
+  // MP4 dikerjakan Cloudinary saat upload, bukan direkam ulang di browser.
   const [video, setVideo] = useState(null);
   const videoPreview = useMemo(
     () => (video ? URL.createObjectURL(video) : null),
@@ -306,8 +309,8 @@ export default function HomePage() {
   // URL pratinjau lama dibuang saat lampiran berganti atau dihapus — tanpa ini
   // object URL menumpuk di memori tiap kali user memilih file.
   useEffect(() => () => {
-    if (fotoPreview) URL.revokeObjectURL(fotoPreview);
-  }, [fotoPreview]);
+    fotoPreviews.forEach((u) => URL.revokeObjectURL(u));
+  }, [fotoPreviews]);
   useEffect(() => () => {
     if (videoPreview) URL.revokeObjectURL(videoPreview);
   }, [videoPreview]);
@@ -376,20 +379,22 @@ export default function HomePage() {
 
     setSubmitting(true);
     try {
-      if (foto || video) {
+      if (fotos.length || video) {
         // FormData: teks + byte lampiran dalam satu request. Field yang dikirim
-        // identik dengan jalur JSON — bedanya cuma pembungkusnya. Hanya satu
-        // lampiran yang mungkin: form sudah saling mengosongkan.
+        // identik dengan jalur JSON — bedanya cuma pembungkusnya. Nama field
+        // foto diulang; server membacanya dengan getAll.
         const form = new FormData();
         form.append('message', trimmed);
         form.append('senderInfo', selectedTemplate.name);
-        if (foto) form.append('foto', foto, foto.name);
+        for (const f of fotos) form.append('foto', f, f.name);
         if (video) form.append('video', video, video.name);
         // Lagu dikirim sebagai string JSON (FormData hanya menyimpan teks).
         if (music) form.append('music', JSON.stringify(music));
-        // Foto bisa 5 MB; video sampai 25 MB. Timeout 10 detik default tidak
-        // masuk akal untuk unggahan video di koneksi lambat.
-        await menfesAPI.submit(form, { timeout: video ? 180000 : 30000 });
+        // Video sampai 25 MB, empat foto bisa 20 MB. Timeout 10 detik default
+        // tidak masuk akal untuk unggahan sebesar itu di koneksi lambat.
+        await menfesAPI.submit(form, {
+          timeout: video ? 180000 : fotos.length ? 60000 : 30000,
+        });
       } else {
         await menfesAPI.submit({
           message: trimmed,
@@ -401,7 +406,7 @@ export default function HomePage() {
       setLastSubmittedTemplate(selectedTemplate.name);
       setSubmitted(true);
       setMessage('');
-      setFoto(null);
+      setFotos([]);
       setVideo(null);
       setMusic(null);
       toast.success('Menfess terkirim! Menunggu persetujuan admin.');
@@ -413,47 +418,79 @@ export default function HomePage() {
     }
   }
 
-  // Satu input untuk dua jenis lampiran. Memilih yang satu mengosongkan yang
-  // lain supaya unduhan tidak pernah membawa foto dan video sekaligus.
+  // Satu input untuk semua lampiran; file diproses satu per satu dan yang
+  // melewati batas ditolak dengan pesan sendiri, bukan membatalkan semuanya.
   async function handleLampiranPilih(e) {
-    const pilih = e.target.files?.[0];
+    const pilih = Array.from(e.target.files || []);
     e.target.value = ''; // kosongkan supaya file yang sama bisa dipilih ulang
-    if (!pilih) return;
+    if (!pilih.length) return;
 
-    if (TIPE_FOTO_OK.includes(pilih.type)) {
-      if (pilih.size > UKURAN_FOTO_MAKS) {
-        toast.error('Foto maksimal 5 MB!');
-        return;
-      }
-      try {
-        setFoto(await bingkaiFoto(pilih));
-        setVideo(null);
-      } catch {
-        toast.error('Foto tidak bisa dibaca. Coba gambar lain.');
-      }
-      return;
-    }
+    const fotoBaru = [...fotos];
+    let videoBaru = video;
+    // Dihitung dari file final (foto sudah di-re-encode) supaya batas total di
+    // sini sejalan dengan yang nanti diperiksa server.
+    const totalSekarang = () =>
+      fotoBaru.reduce((n, f) => n + f.size, 0) + (videoBaru ? videoBaru.size : 0);
 
-    if (TIPE_VIDEO_OK.includes(pilih.type)) {
-      if (pilih.size > UKURAN_VIDEO_MAKS) {
-        toast.error('Video maksimal 25 MB!');
-        return;
-      }
-      try {
-        const durasi = await bacaDurasiVideo(pilih);
-        if (!Number.isFinite(durasi) || durasi < DURASI_VIDEO_MIN || durasi > DURASI_VIDEO_MAKS) {
-          toast.error(`Durasi video harus ${DURASI_VIDEO_MIN}-${DURASI_VIDEO_MAKS} detik!`);
-          return;
+    for (const f of pilih) {
+      if (TIPE_FOTO_OK.includes(f.type)) {
+        if (fotoBaru.length >= FOTO_MAKS) {
+          toast.error(`Maksimal ${FOTO_MAKS} foto.`);
+          continue;
         }
-        setVideo(pilih);
-        setFoto(null);
-      } catch {
-        toast.error('Video tidak bisa dibaca. Coba file lain.');
+        if (f.size > UKURAN_FOTO_MAKS) {
+          toast.error(`${f.name}: foto maksimal 5 MB!`);
+          continue;
+        }
+        try {
+          const hasil = await bingkaiFoto(f);
+          if (totalSekarang() + hasil.size > UKURAN_TOTAL_MAKS) {
+            toast.error('Total lampiran maksimal 45 MB!');
+            continue;
+          }
+          fotoBaru.push(hasil);
+        } catch {
+          toast.error(`${f.name}: foto tidak bisa dibaca. Coba gambar lain.`);
+        }
+        continue;
       }
-      return;
+
+      if (TIPE_VIDEO_OK.includes(f.type)) {
+        if (videoBaru) {
+          toast.error('Video maksimal 1. Hapus video lama dulu.');
+          continue;
+        }
+        if (f.size > UKURAN_VIDEO_MAKS) {
+          toast.error(`${f.name}: video maksimal 25 MB!`);
+          continue;
+        }
+        try {
+          const durasi = await bacaDurasiVideo(f);
+          if (!Number.isFinite(durasi) || durasi < DURASI_VIDEO_MIN || durasi > DURASI_VIDEO_MAKS) {
+            toast.error(`Durasi video harus ${DURASI_VIDEO_MIN}-${DURASI_VIDEO_MAKS} detik!`);
+            continue;
+          }
+          if (totalSekarang() + f.size > UKURAN_TOTAL_MAKS) {
+            toast.error('Total lampiran maksimal 45 MB!');
+            continue;
+          }
+          videoBaru = f;
+        } catch {
+          toast.error(`${f.name}: video tidak bisa dibaca. Coba file lain.`);
+        }
+        continue;
+      }
+
+      toast.error('Lampiran harus JPG/PNG, atau video MP4/MOV/WebM!');
     }
 
-    toast.error('Lampiran harus JPG/PNG, atau video MP4/MOV/WebM!');
+    setFotos(fotoBaru);
+    setVideo(videoBaru);
+  }
+
+  // Hapus satu foto; urutan sisanya dipertahankan.
+  function hapusFoto(indeks) {
+    setFotos((lama) => lama.filter((_, i) => i !== indeks));
   }
 
   function handleReset() {
@@ -461,7 +498,7 @@ export default function HomePage() {
     setMessage('');
     setSelectedTemplateId('template4');
     setShowPreview(true);
-    setFoto(null);
+    setFotos([]);
     setVideo(null);
     setMusic(null);
     setStep(1);
@@ -682,22 +719,23 @@ export default function HomePage() {
                 <MusicPicker value={music} onChange={setMusic} disabled={submitting} aktif={step === 3} />
               </div>
 
-              {/* 4. Foto atau video — opsional, jadi slide kedua di post IG */}
+              {/* 4. Foto (maks 4) dan/atau video (maks 1) — opsional, jadi slide
+                  setelah kartu di post IG. Video selalu slide terakhir. */}
               <div className={`space-y-3 ${step === 4 ? '' : 'hidden sm:block'}`}>
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-ink-700 dark:text-parchment-300 font-mono uppercase tracking-widest">
                     Lampiran — Opsional
                   </p>
                   <span className="text-[10px] font-mono text-ink-500 dark:text-ink-200 border border-parchment-300 dark:border-ink-600 px-2 py-0.5 rounded-md">
-                    {foto || video ? 'TERPILIH' : 'BOLEH DILEWATI'}
+                    {fotos.length || video ? 'TERPILIH' : 'BOLEH DILEWATI'}
                   </span>
                 </div>
 
                 <p className="text-[11px] text-ink-500 dark:text-parchment-400 font-mono leading-relaxed">
-                  Pilih salah satu: JPG/PNG maks 5 MB, atau video MP4/MOV/WebM
-                  maks 25 MB dengan durasi 3–60 detik. Lampirannya otomatis
-                  dibingkai ala HarkatNekatt, lalu jadi slide kedua setelah
-                  kartu di postingan Instagram.
+                  Maks 4 foto (JPG/PNG, 5 MB per foto) dan/atau 1 video
+                  (MP4/MOV/WebM, 25 MB, durasi 3–60 detik). Total maks 45 MB.
+                  Semua dibingkai ala HarkatNekatt, lalu jadi slide setelah kartu
+                  di postingan Instagram.
                 </p>
 
                 <input
@@ -706,34 +744,40 @@ export default function HomePage() {
                   accept="image/jpeg,image/png,video/mp4,video/quicktime,video/webm"
                   onChange={handleLampiranPilih}
                   className="hidden"
+                  multiple
                   disabled={submitting}
                 />
 
-                {foto ? (
-                  <div className="rounded-xl border border-parchment-300 dark:border-ink-600 overflow-hidden">
-                    <img
-                      src={fotoPreview}
-                      alt="Foto yang akan dikirim"
-                      className="w-full max-h-64 object-contain bg-parchment-200 dark:bg-ink-900"
-                    />
-                    <div className="flex gap-2 p-2 bg-parchment-100 dark:bg-ink-800">
-                      <label
-                        htmlFor="lampiran"
-                        className="flex-1 text-center text-xs font-mono font-semibold py-2 rounded-lg border border-parchment-300 dark:border-ink-600 text-ink-700 dark:text-parchment-300 hover:bg-parchment-200 dark:hover:bg-ink-700 cursor-pointer transition-colors"
+                {fotos.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {fotos.map((f, i) => (
+                      <div
+                        key={fotoPreviews[i]}
+                        className="relative rounded-xl border border-parchment-300 dark:border-ink-600 overflow-hidden"
                       >
-                        Ganti
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setFoto(null)}
-                        disabled={submitting}
-                        className="flex-1 text-xs font-mono font-semibold py-2 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-                      >
-                        Hapus
-                      </button>
-                    </div>
+                        <img
+                          src={fotoPreviews[i]}
+                          alt={`Foto ${i + 1} yang akan dikirim`}
+                          className="w-full h-28 sm:h-32 object-cover bg-parchment-200 dark:bg-ink-900"
+                        />
+                        <span className="absolute bottom-1 left-1 text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/60 text-white">
+                          Slide {i + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => hapusFoto(i)}
+                          disabled={submitting}
+                          aria-label={`Hapus foto ${i + 1}`}
+                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs leading-none hover:bg-red-600 transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ) : video ? (
+                )}
+
+                {video && (
                   <div className="rounded-xl border border-parchment-300 dark:border-ink-600 overflow-hidden">
                     {/* Pratinjau frame: krem + handle, sama seperti versi yang
                         dipasang Cloudinary saat upload. */}
@@ -748,55 +792,54 @@ export default function HomePage() {
                         @harkatnekatt
                       </span>
                     </div>
-                    <div className="flex gap-2 p-2 bg-parchment-100 dark:bg-ink-800">
-                      <label
-                        htmlFor="lampiran"
-                        className="flex-1 text-center text-xs font-mono font-semibold py-2 rounded-lg border border-parchment-300 dark:border-ink-600 text-ink-700 dark:text-parchment-300 hover:bg-parchment-200 dark:hover:bg-ink-700 cursor-pointer transition-colors"
-                      >
-                        Ganti
-                      </label>
+                    <div className="p-2 bg-parchment-100 dark:bg-ink-800">
                       <button
                         type="button"
                         onClick={() => setVideo(null)}
                         disabled={submitting}
-                        className="flex-1 text-xs font-mono font-semibold py-2 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                        className="w-full text-xs font-mono font-semibold py-2 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                       >
-                        Hapus
+                        Hapus video
                       </button>
                     </div>
                   </div>
-                ) : (
-                  <label
-                    htmlFor="lampiran"
-                    className="block border-2 border-dashed border-parchment-300 dark:border-ink-600 rounded-xl py-6 sm:py-8 text-center cursor-pointer hover:border-brand-500 hover:bg-parchment-200/50 dark:hover:bg-ink-700/50 transition-colors"
-                  >
-                    <svg
-                      className="w-7 h-7 mx-auto mb-1.5 text-ink-400 dark:text-ink-300"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      aria-hidden="true"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                    </svg>
-                    <span className="block text-xs font-mono font-semibold text-ink-700 dark:text-parchment-300">
-                      Pilih Foto atau Video
-                    </span>
-                    <span className="block text-[11px] font-mono text-ink-500 dark:text-ink-300 mt-0.5">
-                      atau lewati kalau cuma mau kirim kartu
-                    </span>
-                  </label>
+                )}
+
+                {(fotos.length < FOTO_MAKS || !video) && (
+                  <div className="flex gap-2">
+                    {fotos.length < FOTO_MAKS && (
+                      <label
+                        htmlFor="lampiran"
+                        className="flex-1 border-2 border-dashed border-parchment-300 dark:border-ink-600 rounded-xl py-4 sm:py-6 text-center cursor-pointer hover:border-brand-500 hover:bg-parchment-200/50 dark:hover:bg-ink-700/50 transition-colors"
+                      >
+                        <span className="block text-xs font-mono font-semibold text-ink-700 dark:text-parchment-300">
+                          + Tambah Foto
+                        </span>
+                        <span className="block text-[10px] font-mono text-ink-500 dark:text-ink-300 mt-0.5">
+                          {fotos.length}/{FOTO_MAKS} terpilih
+                        </span>
+                      </label>
+                    )}
+                    {!video && (
+                      <label
+                        htmlFor="lampiran"
+                        className="flex-1 border-2 border-dashed border-parchment-300 dark:border-ink-600 rounded-xl py-4 sm:py-6 text-center cursor-pointer hover:border-brand-500 hover:bg-parchment-200/50 dark:hover:bg-ink-700/50 transition-colors"
+                      >
+                        <span className="block text-xs font-mono font-semibold text-ink-700 dark:text-parchment-300">
+                          + Video
+                        </span>
+                        <span className="block text-[10px] font-mono text-ink-500 dark:text-ink-300 mt-0.5">
+                          3–60 detik, maks 25 MB
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                )}
+
+                {!fotos.length && !video && (
+                  <p className="text-[11px] font-mono text-ink-400 dark:text-ink-300 text-center">
+                    atau lewati kalau cuma mau kirim kartu
+                  </p>
                 )}
               </div>
 

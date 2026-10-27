@@ -12,6 +12,7 @@ const { statusBuka, JAM_BUKA } = require('./siteController');
 // Instagram. WebP sengaja ditolak di sini supaya gagal sebagai 400 yang jelas
 // di pengirim, bukan sebagai fallback diam-diam saat publish IG nanti.
 const UKURAN_FOTO_MAKS = 5 * 1024 * 1024;
+const FOTO_MAKS = 4;
 const TIPE_FOTO = new Map([
   ['image/jpeg', 'jpg'],
   ['image/jpg', 'jpg'],
@@ -19,12 +20,15 @@ const TIPE_FOTO = new Map([
 ]);
 
 // ── Batas video lampiran pengirim ──────────────────────────────────────────
-// Satu lampiran saja: foto ATAU video. 25 MB cukup untuk video HP 30-60 detik
-// dan menjaga body request tetap muat di RAM instance kecil; Cloudinary free
-// plan sendiri berhenti di 100 MB per video. Durasi TIDAK diperiksa di sini —
-// MP4 parser bukan urusan backend ini; batas 3-60 detik dijaga di form, dan
-// Instagram yang terakhir menolak kalau tetap lolos.
+// Maks 1 video, boleh berdampingan dengan foto (video selalu slide terakhir).
+// 25 MB cukup untuk video HP 30-60 detik dan menjaga body request tetap muat
+// di RAM instance kecil; Cloudinary free plan sendiri berhenti di 100 MB per
+// video. Durasi TIDAK diperiksa di sini — MP4 parser bukan urusan backend ini;
+// batas 3-60 detik dijaga di form, dan Instagram yang terakhir menolak kalau
+// tetap lolos.
 const UKURAN_VIDEO_MAKS = 25 * 1024 * 1024;
+// Total semua lampiran: 4 foto (4x5 MB) + 1 video (25 MB) = 45 MB.
+const UKURAN_TOTAL_MAKS = 45 * 1024 * 1024;
 const TIPE_VIDEO = new Map([
   ['video/mp4', 'mp4'],
   ['video/quicktime', 'mov'],
@@ -101,7 +105,7 @@ async function submitMenfes(req, res) {
     // dengan jalur post-to-Instagram di adminController). Request JSON lama
     // lolos parser dan tetap datang sebagai objek — tidak ada perubahan perilaku.
     let fields = req.body;
-    let file = null;
+    let files = [];
     let video = null;
     if (Buffer.isBuffer(req.body)) {
       let form;
@@ -116,19 +120,10 @@ async function submitMenfes(req, res) {
       for (const [k, v] of form.entries()) {
         if (typeof v === 'string') fields[k] = v;
       }
-      const kandidat = form.get('foto');
-      if (kandidat instanceof File) file = kandidat;
-      const kandidatVideo = form.get('video');
-      if (kandidatVideo instanceof File) video = kandidatVideo;
-    }
-
-    // Satu lampiran saja. Ditolak SEBELUM upload apa pun: kalau dua-duanya
-    // diterima, carousel punya dua slide lampiran dan tidak ada aturan urutan
-    // yang jelas — lebih jujur menolak daripada menebak.
-    if (file && video) {
-      return res.status(400).json({
-        error: 'Pilih salah satu: foto atau video, bukan dua-duanya.',
-      });
+      // getAll, bukan get: dengan get, file kedua di field yang sama hilang
+      // diam-diam. Kalau jumlahnya melebihi batas, lebih jujur menolak.
+      files = form.getAll('foto').filter((f) => f instanceof File);
+      video = form.getAll('video').find((f) => f instanceof File) || null;
     }
 
     const { message, senderName, senderInfo } = fields;
@@ -154,24 +149,30 @@ async function submitMenfes(req, res) {
       return res.status(400).json({ error: 'Pesan maksimal 500 karakter.' });
     }
 
-    // ── Foto (opsional): periksa SEBELUM menyentuh database ─────────────────
+    // ── Foto (opsional, maks 4): periksa SEBELUM menyentuh database ─────────
     // Urutan ini disengaja: input rusak dibalas 400 tanpa baris baru dan
     // tanpa file sampah, sama seperti periksaGambar di jalur Instagram.
-    if (file) {
-      if (file.size === 0) {
-        return res.status(400).json({ error: 'Foto kosong atau tidak terkirim.' });
+    if (files.length > FOTO_MAKS) {
+      return res.status(400).json({
+        error: `Maksimal ${FOTO_MAKS} foto, kamu mengirim ${files.length}.`,
+      });
+    }
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      if (f.size === 0) {
+        return res.status(400).json({ error: `Foto ${i + 1} kosong atau tidak terkirim.` });
       }
-      if (!TIPE_FOTO.has(String(file.type || '').toLowerCase())) {
-        return res.status(400).json({ error: 'Format foto harus JPG atau PNG.' });
+      if (!TIPE_FOTO.has(String(f.type || '').toLowerCase())) {
+        return res.status(400).json({ error: `Foto ${i + 1}: format harus JPG atau PNG.` });
       }
-      if (file.size > UKURAN_FOTO_MAKS) {
+      if (f.size > UKURAN_FOTO_MAKS) {
         return res.status(400).json({
-          error: `Foto ${(file.size / 1024 / 1024).toFixed(1)} MB, batas ${UKURAN_FOTO_MAKS / 1024 / 1024} MB.`,
+          error: `Foto ${i + 1}: ${(f.size / 1024 / 1024).toFixed(1)} MB, batas ${UKURAN_FOTO_MAKS / 1024 / 1024} MB.`,
         });
       }
     }
 
-    // ── Video (opsional): periksa juga SEBELUM menyentuh database ───────────
+    // ── Video (opsional, maks 1): periksa juga SEBELUM menyentuh database ───
     if (video) {
       if (video.size === 0) {
         return res.status(400).json({ error: 'Video kosong atau tidak terkirim.' });
@@ -186,26 +187,36 @@ async function submitMenfes(req, res) {
       }
     }
 
+    // Total semua lampiran dibatasi: body request ditahan utuh di RAM, dan
+    // 4 foto + 1 video yang semuanya mentok batas per-file = 45 MB.
+    const totalLampiran =
+      files.reduce((n, f) => n + f.size, 0) + (video ? video.size : 0);
+    if (totalLampiran > UKURAN_TOTAL_MAKS) {
+      return res.status(400).json({
+        error: `Total lampiran ${(totalLampiran / 1024 / 1024).toFixed(1)} MB, batas ${UKURAN_TOTAL_MAKS / 1024 / 1024} MB.`,
+      });
+    }
+
     // Ambil IP pengirim (di-hash untuk privasi).
     // req.ip sudah memperhitungkan 'trust proxy', jadi bukan header mentah
     // yang bisa dipalsukan client.
     const ipHash = hashIp(req.ip);
 
-    // Foto diunggah ke Cloudinary DULU, baru baris dibuat dengan fotoUrl-nya
+    // Lampiran diunggah ke Cloudinary DULU, baru baris dibuat dengan URL-nya
     // sekalian — kalau barisnya yang gagal dibuat, aset tadi dibersihkan di
-    // catch. urlFoto + barisJadi dipakai untuk membersihkan tanpa sempat
+    // catch. urlFotos + barisJadi dipakai untuk membersihkan tanpa sempat
     // menghapus aset yang sudah menempel pada baris yang berhasil dibuat.
-    let urlFoto = null;
+    const urlFotos = [];
     let urlVideo = null;
     let barisJadi = false;
     try {
-      if (file) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const ext = TIPE_FOTO.get(file.type.toLowerCase());
+      for (const f of files) {
+        const buffer = Buffer.from(await f.arrayBuffer());
+        const ext = TIPE_FOTO.get(f.type.toLowerCase());
         // Nama aset dari angka acak, BUKAN dari nama file pengguna: nama dari
         // input membuka path traversal dan membocorkan asal kiriman.
         const publicId = `foto-${crypto.randomBytes(10).toString('hex')}`;
-        urlFoto = (await unggahFoto(buffer, file.type, publicId, ext)).url;
+        urlFotos.push((await unggahFoto(buffer, f.type, publicId, ext)).url);
       }
 
       if (video) {
@@ -224,7 +235,7 @@ async function submitMenfes(req, res) {
           senderInfo: senderInfo?.trim()?.substring(0, 200) || null,
           status: 'PENDING',
           ipHash,
-          fotoUrl: urlFoto,
+          fotoUrls: urlFotos,
           videoUrl: urlVideo,
           // Tanpa lagu: kolomnya TIDAK disentuh sama sekali (nullable JSON —
           // meng-omit lebih aman daripada menulis null eksplisit ke kolom Json).
@@ -251,11 +262,9 @@ async function submitMenfes(req, res) {
     } catch (gagal) {
       // Proses gagal SEBELUM baris jadi: buang aset Cloudinary yatim supaya
       // tidak menumpuk sebagai sampah.
-      if (urlFoto && !barisJadi) {
-        hapusFoto(urlFoto).catch(() => {});
-      }
-      if (urlVideo && !barisJadi) {
-        hapusVideo(urlVideo).catch(() => {});
+      if (!barisJadi) {
+        for (const u of urlFotos) hapusFoto(u).catch(() => {});
+        if (urlVideo) hapusVideo(urlVideo).catch(() => {});
       }
       throw gagal;
     }
