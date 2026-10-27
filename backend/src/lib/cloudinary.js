@@ -23,15 +23,22 @@ const API_DASAR = 'https://api.cloudinary.com/v1_1';
 // Foto dibingkai di browser; video TIDAK — merekam ulang video di browser
 // butuh 1x durasi dan hasilnya WebM yang ditolak Instagram. Jadi frame video
 // dipasang Cloudinary saat upload, dengan geometri yang sama persis dengan
-// bingkai foto (HomePage.bingkaiFoto): kanvas 1080x1350, area media 960x1110,
-// margin krem, handle di strip bawah.
+// bingkai foto (HomePage.bingkaiFoto): kanvas 1080x1350, area media 960x1110
+// di (60,60), strip krem 180 px di bawah untuk handle.
+//
+// TIGA c_pad, bukan dua, dan urutannya penting: `c_pad` SELALU membesarkan isi
+// agar memenuhi kotaknya. Kalau 960x1110 langsung di-pad ke 1080x1350, isinya
+// di-upscale 1.125x sehingga area media jadi 1080x1249 dan teks handle
+// menempel/menimpa video. Pad tengah (1080x1110) hanya menambah margin samping
+// tanpa skala, karena tinggi sumber sudah sama dengan tinggi kotak.
 //
 // f_mp4 sekaligus menormalkan sumber apa pun (MOV/HEVC dari iPhone, WebM)
 // jadi MP4 H.264/AAC — satu-satunya bentuk yang diterima Graph API.
 const FRAME_VIDEO = [
-  'c_pad,w_960,h_1110,b_rgb:F6EFDD',
-  'c_pad,w_1080,h_1350,b_rgb:F6EFDD',
-  'l_text:Arial_44_bold:@harkatnekatt,co_rgb:7A1F2B,g_south,y_70',
+  'c_pad,w_960,h_1110,b_rgb:F6EFDD', // video masuk area media, sisa letterbox krem
+  'c_pad,w_1080,h_1110,b_rgb:F6EFDD', // margin 60 px kiri/kanan, tanpa upscale
+  'c_pad,w_1080,h_1350,b_rgb:F6EFDD,g_north,y_60', // strip 180 px hanya di bawah
+  'l_text:Arial_44_bold:@harkatnekatt,co_rgb:7A1F2B,g_south,y_50',
   'f_mp4',
 ].join('/');
 
