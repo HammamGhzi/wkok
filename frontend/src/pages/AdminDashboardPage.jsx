@@ -664,6 +664,34 @@ export default function AdminDashboardPage() {
                       </div>
                     )}
 
+                    {/* Video pengirim — slide terakhir carousel, sama seperti
+                        foto. Poster diambil dari frame pertama lewat
+                        Cloudinary (bentuk URL-nya milik kita sendiri, lihat
+                        FRAME_VIDEO di backend). */}
+                    {item.videoUrl && (
+                      <div className="flex items-center gap-2.5">
+                        <a
+                          href={urlAset(item.videoUrl)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Klik untuk buka video"
+                        >
+                          <video
+                            src={urlAset(item.videoUrl)}
+                            poster={urlAset(item.videoUrl).replace('/f_mp4/', '/f_jpg/').replace(/\.mp4$/, '.jpg')}
+                            muted
+                            playsInline
+                            preload="none"
+                            className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-lg border border-ink-600 hover:border-brand-500 transition-colors bg-ink-800"
+                          />
+                        </a>
+                        <span className="text-[10px] font-mono text-ink-300 leading-relaxed">
+                          Video pengirim<br />
+                          <span className="text-ink-400">klik untuk buka</span>
+                        </span>
+                      </div>
+                    )}
+
                     {/* Lagu pilihan pengirim — referensi admin saja, tidak
                         pernah ikut ke feed publik maupun Instagram. */}
                     {item.music && <BlokMusik music={item.music} />}

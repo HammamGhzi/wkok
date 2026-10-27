@@ -30,12 +30,12 @@ function getGroupJid() {
   return groupId;
 }
 
-function fetchImage(url) {
+function fetchBuffer(url) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
     client.get(url, (res) => {
       if (res.statusCode !== 200) {
-        reject(new Error(`Failed to fetch image: ${res.statusCode}`));
+        reject(new Error(`Gagal mengambil berkas: ${res.statusCode}`));
         return;
       }
       const chunks = [];
@@ -44,6 +44,11 @@ function fetchImage(url) {
     }).on('error', reject);
   });
 }
+
+// Batas media WhatsApp 16 MB, sementara video pengirim sampai 25 MB. Versi
+// 720 px dari Cloudinary cukup kecil untuk lolos; kalau masih lebih, tautan
+// yang dikirim (lebih baik daripada notifikasi gagal total).
+const BATAS_VIDEO_WA = 16 * 1024 * 1024;
 
 /**
  * Inisialisasi bot WhatsApp dengan Baileys
@@ -123,7 +128,7 @@ async function initWa() {
 
 /**
  * Kirim notifikasi ke admin saat ada menfess baru masuk
- * Format: 1 pesan dengan foto (jika ada) + caption berisi info lengkap
+ * Format: 1 pesan dengan foto ATAU video (jika ada) + caption berisi info lengkap
  */
 async function notifyNewMenfesWa({ menfes, pendingCount }) {
   if (!sock || !isConnected) return;
@@ -144,9 +149,7 @@ async function notifyNewMenfesWa({ menfes, pendingCount }) {
     }
     
     if (menfes.videoUrl) {
-      // Video TIDAK dilampirkan: batas media WhatsApp 16 MB, sementara video
-      // pengirim sampai 25 MB. Tautan tetap bisa dibuka anggota grup.
-      caption += `Video: Ada\n${menfes.videoUrl}\n`;
+      caption += `Video: Ada\n`;
     }
     
     if (menfes.music) {
@@ -160,7 +163,7 @@ async function notifyNewMenfesWa({ menfes, pendingCount }) {
     // Jika ada foto, kirim foto dengan caption
     if (menfes.fotoUrl) {
       try {
-        const buffer = await fetchImage(menfes.fotoUrl);
+        const buffer = await fetchBuffer(menfes.fotoUrl);
         await sock.sendMessage(groupJid, {
           image: buffer,
           caption: caption,
@@ -168,6 +171,26 @@ async function notifyNewMenfesWa({ menfes, pendingCount }) {
       } catch (imgErr) {
         console.error('Gagal kirim foto ke WA, kirim teks aja:', imgErr.message);
         await sock.sendMessage(groupJid, { text: caption });
+      }
+    } else if (menfes.videoUrl) {
+      try {
+        // Turunkan ke 720 px supaya muat batas media WhatsApp; frame dan
+        // handle ikut mengecil proporsional, jadi tetap sama bentuknya.
+        const ringan = menfes.videoUrl.replace('/f_mp4/', '/c_scale,w_720/f_mp4/');
+        const buffer = await fetchBuffer(ringan);
+        if (buffer.length > BATAS_VIDEO_WA) {
+          throw new Error(`video ${(buffer.length / 1048576).toFixed(1)} MB melebihi batas 16 MB`);
+        }
+        await sock.sendMessage(groupJid, {
+          video: buffer,
+          mimetype: 'video/mp4',
+          caption: caption,
+        });
+      } catch (videoErr) {
+        console.error('Gagal kirim video ke WA, kirim tautan:', videoErr.message);
+        await sock.sendMessage(groupJid, {
+          text: `${caption}\n\nVideo: ${menfes.videoUrl}`,
+        });
       }
     } else {
       await sock.sendMessage(groupJid, { text: caption });
