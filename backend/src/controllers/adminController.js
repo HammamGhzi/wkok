@@ -7,7 +7,7 @@ const adminCache = require('../lib/adminCache');
 const { parsePaging } = require('../lib/paging');
 const igApi = require('../services/instagramApi');
 const igPublish = require('../services/igPublish');
-const { hapusFoto: hapusAsetCloudinary } = require('../lib/cloudinary');
+const { hapusFoto: hapusAsetCloudinary, hapusVideo: hapusVideoCloudinary } = require('../lib/cloudinary');
 
 // Kunci cache untuk daftar admin. Status sudah diambil dari daftar putih di
 // bawah dan page serta limit sudah dijepit parsePaging, jadi ruang kuncinya
@@ -40,6 +40,15 @@ function hapusFoto(fotoUrl) {
   }
   // Non-URL Cloudinary dibiarkan di sini: hapusAsetCloudinary sendiri mengabaikannya.
   hapusAsetCloudinary(fotoUrl).catch((err) => console.error('Buang aset Cloudinary (non-fatal):', err.message));
+}
+
+// Video pengirim selalu URL Cloudinary, jadi tidak ada bentuk path relatif lama
+// yang perlu di-unlink. Best-effort, alasannya sama dengan hapusFoto.
+function hapusVideo(videoUrl) {
+  if (!videoUrl) return;
+  hapusVideoCloudinary(videoUrl).catch((err) =>
+    console.error('Buang aset video Cloudinary (non-fatal):', err.message)
+  );
 }
 
 // Status yang dikenal. Nilai lain DITOLAK dengan 400, bukan diam-diam
@@ -99,6 +108,7 @@ async function getAllMenfes(req, res) {
           igError: true,
           igPublishedAt: true,
           fotoUrl: true,
+          videoUrl: true,
           // Lagu pilihan pengirim — hanya di sini (dashboard). API publik
           // sengaja tidak memilih kolom ini sama sekali.
           music: true,
@@ -267,6 +277,7 @@ async function deleteMenfes(req, res) {
 
     await prisma.menfes.delete({ where: { id } });
     hapusFoto(menfes.fotoUrl);
+    hapusVideo(menfes.videoUrl);
 
     audit('menfes.delete', req, { menfesId: id });
     invalidateAll();

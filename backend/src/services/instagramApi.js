@@ -1,9 +1,9 @@
 // Pembungkus tipis untuk Instagram Graph API.
 //
-// Cakupan file ini sengaja sempit: hanya gambar, hanya feed. Tidak ada reels.
-// Carousel hanya untuk kasus "kartu + foto pengirim" — dua gambar, urutan
-// tetap, tanpa opsi lain. Menambahkannya nanti berarti menambah endpoint dan
-// menambah permukaan yang bisa rusak.
+// Cakupan file ini sengaja sempit: feed saja, tanpa reels dan tanpa stories.
+// Carousel dipakai untuk kasus "kartu + lampiran pengirim" (foto atau video),
+// urutan tetap, tanpa opsi lain. Video masuk sebagai item carousel — reels
+// justru TIDAK boleh jadi item carousel menurut dokumentasi Meta.
 //
 // ── Mengapa host-nya graph.instagram.com ──────────────────────────────────────
 //
@@ -250,6 +250,60 @@ async function createImageContainer({ imageUrl, caption }) {
 }
 
 /**
+ * Bikin container video.
+ *
+ * Dipakai sebagai ITEM CAROUSEL (`isCarouselItem: true`), bukan reels: Meta
+ * menyatakan reels tidak bisa muncul di dalam carousel, sedangkan video biasa
+ * bisa. Caption pada anak carousel juga tidak didukung, jadi parameter itu
+ * tidak dikirim saat isCarouselItem — caption tetap di container induk.
+ *
+ * Proses video asinkron dan jauh lebih lama daripada gambar; pemanggil wajib
+ * menunggu status FINISHED sebelum menerbitkan (lihat tungguContainerSelesai).
+ *
+ * @param {object} args
+ * @param {string} args.videoUrl   URL publik ke MP4/MOV (H.264/HEVC + AAC)
+ * @param {string} [args.caption]  hanya untuk video tunggal, maks 2200 karakter
+ * @param {boolean} [args.isCarouselItem] true = jadi slide carousel
+ * @returns {Promise<{creationId: string}>}
+ */
+async function createVideoContainer({ videoUrl, caption, isCarouselItem = false }) {
+  const { token, igUserId } = kredensial();
+
+  if (!videoUrl) {
+    throw new InstagramApiError('videoUrl wajib diisi.', { raw: 'missing videoUrl' });
+  }
+
+  const teks = (caption ?? '').trim();
+  if (!isCarouselItem && teks.length > BATAS_CAPTION) {
+    throw new InstagramApiError(
+      `Caption ${teks.length} karakter, batas Instagram ${BATAS_CAPTION}. ` +
+        'Pendekkan sebelum memposting.',
+      { raw: 'caption too long' }
+    );
+  }
+
+  const body = await call(
+    `${igUserId}/media`,
+    {
+      media_type: 'VIDEO',
+      video_url: videoUrl,
+      is_carousel_item: isCarouselItem ? 'true' : undefined,
+      caption: isCarouselItem ? undefined : teks || undefined,
+    },
+    'POST',
+    token
+  );
+
+  if (!body?.id) {
+    throw new InstagramApiError('Instagram tidak mengembalikan creation id video.', {
+      raw: JSON.stringify(body).slice(0, 300),
+    });
+  }
+
+  return { creationId: body.id };
+}
+
+/**
  * Rangkai beberapa container anak jadi satu post carousel.
  *
  * Urutan anak menentukan urutan slide. Caption ditaruh DI SINI (container
@@ -384,6 +438,7 @@ module.exports = {
   jelaskanKode,
   getMe,
   createImageContainer,
+  createVideoContainer,
   createCarouselContainer,
   publishContainer,
   getContainerStatus,

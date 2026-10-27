@@ -71,6 +71,12 @@ const igStub = {
     igCalls.push({ fn: 'getContainerStatus', id });
     return 'FINISHED';
   },
+  createVideoContainer: async (args) => {
+    igCalls.push({ fn: 'createVideoContainer', args });
+    if (jebakan === 'video') throw new Error('video ditolak Instagram');
+    if (!args.videoUrl) throw new Error('videoUrl wajib diisi.');
+    return { creationId: 'VIDEO-CREATION-XYZ' };
+  },
   createCarouselContainer: async (args) => {
     igCalls.push({ fn: 'createCarouselContainer', args });
     if (jebakan === 'carousel') throw new Error('carousel ditolak Instagram');
@@ -289,6 +295,52 @@ async function main() {
   check('tanpa peringatan kalau carousel lancar', rFoto.peringatan === null, String(rFoto.peringatan));
   check('igStatus ditulis PUBLISHED', updateTerakhir().igStatus === 'PUBLISHED', updateTerakhir().igStatus);
 
+  // ─── 6b2. Carousel: ada video pengirim ─────────────────────────────────────
+  console.log('\n== carousel (video pengirim) ==');
+  reset();
+  const videoAbsolut = 'https://res.cloudinary.com/uji-video/video/upload/eager/v1767123/video-abc123.mp4';
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED', videoUrl: videoAbsolut,
+  };
+  const rVideo = await igPublish.terbitkan({
+    menfesId: 'M1',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
+    caption: 'halo video',
+  });
+  const anakVideo = igCalls.filter((c) => c.fn === 'createVideoContainer');
+  const indukVideo = igCalls.filter((c) => c.fn === 'createCarouselContainer');
+  check('satu container video dibuat', anakVideo.length === 1, String(anakVideo.length));
+  check('video dikirim sebagai item carousel',
+    anakVideo[0]?.args.isCarouselItem === true, String(anakVideo[0]?.args.isCarouselItem));
+  check('URL video dipakai apa adanya',
+    anakVideo[0]?.args.videoUrl === videoAbsolut, anakVideo[0]?.args.videoUrl);
+  check('induk membawa 2 children (kartu + video)',
+    indukVideo[0]?.args.children?.length === 2, JSON.stringify(indukVideo[0]?.args.children));
+  check('tanpa peringatan kalau video lancar', rVideo.peringatan === null, String(rVideo.peringatan));
+
+  // Video gagal diproses: kartu tunggal tetap tayang, dengan peringatan.
+  console.log('\n== video gagal -> fallback kartu tunggal ==');
+  reset();
+  baris = {
+    id: 'M1', igStatus: null, igMediaId: null, igPermalink: null,
+    status: 'APPROVED', videoUrl: videoAbsolut,
+  };
+  const asliVideo = igStub.createVideoContainer;
+  igStub.createVideoContainer = async () => {
+    throw new Error('video ditolak Instagram');
+  };
+  const rVideoGagal = await igPublish.terbitkan({
+    menfesId: 'M1',
+    buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }],
+    caption: 'caption tetap utuh',
+  });
+  igStub.createVideoContainer = asliVideo;
+  check('peringatan menyebut video gagal',
+    /Video tidak bisa diproses/.test(rVideoGagal.peringatan || ''), rVideoGagal.peringatan);
+  check('publish memakai kartu tunggal ber-caption',
+    igCalls.find((c) => c.fn === 'publishContainer')?.id === 'CREATION-XYZ');
+
   // ─── 6c. Carousel: fotoUrl absolut Cloudinary (bentuk kolom yang kini dipakai)
   console.log('\n== carousel (fotoUrl absolut) ==');
   reset();
@@ -384,7 +436,13 @@ async function main() {
   const belasan = Array.from({ length: 11 }, () => ({ buffer: JPEG, mimeType: 'image/jpeg' }));
   e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: belasan }));
   check('11 kartu ditolak', e !== null && e.kode === 'INPUT_SALAH', e?.kode);
-  check('ditolak sebelum klaim, tanpa sentuhan database', prismaCalls.length === 0, String(prismaCalls.length));
+  // Satu-satunya sentuhan database yang boleh terjadi adalah pembacaan baris
+  // (videoUrl ikut menentukan jumlah anak carousel), bukan klaim updateMany.
+  check(
+    'ditolak sebelum klaim, hanya baca database',
+    prismaCalls.length === 1 && prismaCalls[0].op === 'findUnique',
+    prismaCalls.map((c) => c.op).join(',')
+  );
   check('Instagram tidak dipanggil', igCalls.length === 0);
 
   // ─── 7. Kegagalan di tiap tahap ────────────────────────────────────────────

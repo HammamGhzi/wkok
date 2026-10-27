@@ -88,6 +88,7 @@ async function main() {
 const HARAP_ADA = [
   'getMe',
   'createImageContainer',
+  'createVideoContainer',
   'createCarouselContainer',
   'publishContainer',
   'isConfigured',
@@ -199,6 +200,39 @@ reset();
 nextResponse = jsonRes({ id: 'CAROUSEL-INDUK-2' });
 await ig.createCarouselContainer({ children: ['C1', 'C2'], caption: '   ' });
 check('caption kosong tidak terkirim (carousel)', !calls[0].url.searchParams.has('caption'));
+
+// ─── 5c. Video (lampiran pengirim jadi slide carousel) ───────────────────────
+
+reset();
+e = await grab(() => ig.createVideoContainer({ videoUrl: '' }));
+check('videoUrl kosong ditolak', e !== null && /videoUrl wajib/.test(e?.message || ''), e?.message);
+check('videoUrl kosong tidak memanggil jaringan', calls.length === 0);
+
+reset();
+e = await grab(() => ig.createVideoContainer({ videoUrl: 'https://x.test/v.mp4', caption: panjang }));
+check('caption kelebihan ditolak untuk video tunggal', e !== null && /2201 karakter/.test(e?.message || ''), e?.message);
+check('caption kelebihan (video) tidak memanggil jaringan', calls.length === 0);
+
+reset();
+nextResponse = jsonRes({ id: 'VIDEO-CREATION-1' });
+const vid = await ig.createVideoContainer({
+  videoUrl: 'https://x.test/v.mp4',
+  caption: 'caption induk',
+  isCarouselItem: true,
+});
+check('creation id video dikembalikan', vid.creationId === 'VIDEO-CREATION-1', vid.creationId);
+check('media_type VIDEO', calls[0].url.searchParams.get('media_type') === 'VIDEO');
+check('video_url terkirim', calls[0].url.searchParams.get('video_url') === 'https://x.test/v.mp4');
+check('is_carousel_item true', calls[0].url.searchParams.get('is_carousel_item') === 'true');
+check('caption tidak dikirim ke anak carousel', !calls[0].url.searchParams.has('caption'));
+check('video memakai POST', calls[0].method === 'POST');
+
+// Video tunggal (bukan carousel): caption ikut, is_carousel_item tidak dikirim.
+reset();
+nextResponse = jsonRes({ id: 'VIDEO-CREATION-2' });
+await ig.createVideoContainer({ videoUrl: 'https://x.test/v.mp4', caption: 'halo video' });
+check('caption terkirim untuk video tunggal', calls[0].url.searchParams.get('caption') === 'halo video');
+check('is_carousel_item absen untuk video tunggal', !calls[0].url.searchParams.has('is_carousel_item'));
 
 // ─── 6. Publish ──────────────────────────────────────────────────────────────
 

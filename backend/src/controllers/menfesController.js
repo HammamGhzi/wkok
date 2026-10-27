@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { notifyNewMenfes } = require('../services/telegramBot');
 const { notifyNewMenfesWa } = require('../services/waBot');
 const prisma = require('../lib/prisma');
-const { unggahFoto, hapusFoto } = require('../lib/cloudinary');
+const { unggahFoto, unggahVideo, hapusFoto, hapusVideo } = require('../lib/cloudinary');
 const cache = require('../lib/menfesCache');
 const { parsePaging } = require('../lib/paging');
 const { statusBuka, JAM_BUKA } = require('./siteController');
@@ -16,6 +16,19 @@ const TIPE_FOTO = new Map([
   ['image/jpeg', 'jpg'],
   ['image/jpg', 'jpg'],
   ['image/png', 'png'],
+]);
+
+// ── Batas video lampiran pengirim ──────────────────────────────────────────
+// Satu lampiran saja: foto ATAU video. 25 MB cukup untuk video HP 30-60 detik
+// dan menjaga body request tetap muat di RAM instance kecil; Cloudinary free
+// plan sendiri berhenti di 100 MB per video. Durasi TIDAK diperiksa di sini —
+// MP4 parser bukan urusan backend ini; batas 3-60 detik dijaga di form, dan
+// Instagram yang terakhir menolak kalau tetap lolos.
+const UKURAN_VIDEO_MAKS = 25 * 1024 * 1024;
+const TIPE_VIDEO = new Map([
+  ['video/mp4', 'mp4'],
+  ['video/quicktime', 'mov'],
+  ['video/webm', 'webm'],
 ]);
 
 // ── Lagu pilihan pengirim (opsional) ─────────────────────────────────────────
@@ -89,6 +102,7 @@ async function submitMenfes(req, res) {
     // lolos parser dan tetap datang sebagai objek — tidak ada perubahan perilaku.
     let fields = req.body;
     let file = null;
+    let video = null;
     if (Buffer.isBuffer(req.body)) {
       let form;
       try {
@@ -104,6 +118,17 @@ async function submitMenfes(req, res) {
       }
       const kandidat = form.get('foto');
       if (kandidat instanceof File) file = kandidat;
+      const kandidatVideo = form.get('video');
+      if (kandidatVideo instanceof File) video = kandidatVideo;
+    }
+
+    // Satu lampiran saja. Ditolak SEBELUM upload apa pun: kalau dua-duanya
+    // diterima, carousel punya dua slide lampiran dan tidak ada aturan urutan
+    // yang jelas — lebih jujur menolak daripada menebak.
+    if (file && video) {
+      return res.status(400).json({
+        error: 'Pilih salah satu: foto atau video, bukan dua-duanya.',
+      });
     }
 
     const { message, senderName, senderInfo } = fields;
@@ -146,6 +171,21 @@ async function submitMenfes(req, res) {
       }
     }
 
+    // ── Video (opsional): periksa juga SEBELUM menyentuh database ───────────
+    if (video) {
+      if (video.size === 0) {
+        return res.status(400).json({ error: 'Video kosong atau tidak terkirim.' });
+      }
+      if (!TIPE_VIDEO.has(String(video.type || '').toLowerCase())) {
+        return res.status(400).json({ error: 'Format video harus MP4, MOV, atau WebM.' });
+      }
+      if (video.size > UKURAN_VIDEO_MAKS) {
+        return res.status(400).json({
+          error: `Video ${(video.size / 1024 / 1024).toFixed(1)} MB, batas ${UKURAN_VIDEO_MAKS / 1024 / 1024} MB.`,
+        });
+      }
+    }
+
     // Ambil IP pengirim (di-hash untuk privasi).
     // req.ip sudah memperhitungkan 'trust proxy', jadi bukan header mentah
     // yang bisa dipalsukan client.
@@ -156,6 +196,7 @@ async function submitMenfes(req, res) {
     // catch. urlFoto + barisJadi dipakai untuk membersihkan tanpa sempat
     // menghapus aset yang sudah menempel pada baris yang berhasil dibuat.
     let urlFoto = null;
+    let urlVideo = null;
     let barisJadi = false;
     try {
       if (file) {
@@ -167,6 +208,14 @@ async function submitMenfes(req, res) {
         urlFoto = (await unggahFoto(buffer, file.type, publicId, ext)).url;
       }
 
+      if (video) {
+        const buffer = Buffer.from(await video.arrayBuffer());
+        const ext = TIPE_VIDEO.get(video.type.toLowerCase());
+        const publicId = `video-${crypto.randomBytes(10).toString('hex')}`;
+        // Yang disimpan adalah URL hasil eager: sudah berframe + MP4 H.264.
+        urlVideo = (await unggahVideo(buffer, video.type, publicId, ext)).url;
+      }
+
       // Simpan ke database
       const menfes = await prisma.menfes.create({
         data: {
@@ -176,6 +225,7 @@ async function submitMenfes(req, res) {
           status: 'PENDING',
           ipHash,
           fotoUrl: urlFoto,
+          videoUrl: urlVideo,
           // Tanpa lagu: kolomnya TIDAK disentuh sama sekali (nullable JSON —
           // meng-omit lebih aman daripada menulis null eksplisit ke kolom Json).
           ...(music ? { music } : {}),
@@ -203,6 +253,9 @@ async function submitMenfes(req, res) {
       // tidak menumpuk sebagai sampah.
       if (urlFoto && !barisJadi) {
         hapusFoto(urlFoto).catch(() => {});
+      }
+      if (urlVideo && !barisJadi) {
+        hapusVideo(urlVideo).catch(() => {});
       }
       throw gagal;
     }

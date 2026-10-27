@@ -19,6 +19,12 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   const initialTemplateId = parseTemplateFromMenfes(menfes);
   const initialTemplate = getTemplateById(initialTemplateId);
 
+  // Kode unik per menfes untuk nama file unduhan. Sebelumnya nama file hanya
+  // memuat id template, jadi dua menfes dengan template sama menghasilkan nama
+  // persis sama dan browser menamainya "(1)". Delapan karakter awal id sudah
+  // cukup unik sekaligus masih bisa dilacak balik ke baris database.
+  const kodeUnik = (menfes?.id || '').slice(0, 8) || 'tanpa-id';
+
   const [selectedTemplateId, setSelectedTemplateId] = useState(initialTemplateId);
   const currentTemplate = getTemplateById(selectedTemplateId);
 
@@ -39,6 +45,10 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   // begitu, bukan error diam-diam.
   const [fotoDownloading, setFotoDownloading] = useState(false);
   const [fotoHilang, setFotoHilang] = useState(false);
+  // Video pengirim: unduh manual + penanda file hilang, alasannya sama dengan
+  // foto. URL-nya sudah MP4 berframe hasil Cloudinary.
+  const [videoDownloading, setVideoDownloading] = useState(false);
+  const [videoHilang, setVideoHilang] = useState(false);
   // Caption diisi dari igCaption supaya menfes yang gagal tayang dan mau dicoba
   // lagi tidak mengharuskan admin mengetik ulang teksnya.
   const [caption, setCaption] = useState(menfes?.igCaption || '');
@@ -324,7 +334,7 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
         const url = URL.createObjectURL(blobs[i]);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `menfes-${currentTemplate.id}-kartu-${i + 1}-dari-${n}.jpg`;
+        a.download = `menfes-${currentTemplate.id}-${kodeUnik}-kartu-${i + 1}-dari-${n}.jpg`;
         a.click();
         URL.revokeObjectURL(url);
         if (i < n - 1) await new Promise((r) => setTimeout(r, 400));
@@ -350,7 +360,8 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = menfes.fotoUrl.split('/').pop() || 'foto.jpg';
+      const ext = (menfes.fotoUrl.split('.').pop() || 'jpg').toLowerCase();
+      a.download = `menfes-${kodeUnik}-foto.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Foto pengirim berhasil diunduh.');
@@ -359,6 +370,30 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
       console.error(err);
     } finally {
       setFotoDownloading(false);
+    }
+  }
+
+  async function handleDownloadVideo() {
+    setVideoDownloading(true);
+    try {
+      // Fetch dulu jadi blob, alasannya sama dengan foto: endpoint aset beda
+      // origin (Vercel ↔ Cloudinary), dan atribut `download` diabaikan browser
+      // untuk URL cross-origin.
+      const res = await fetch(urlAset(menfes.videoUrl));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `menfes-${kodeUnik}-video.mp4`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Video pengirim berhasil diunduh.');
+    } catch (err) {
+      toast.error('Gagal download video.');
+      console.error(err);
+    } finally {
+      setVideoDownloading(false);
     }
   }
 
@@ -374,9 +409,11 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
       // hitungKartu dipanggil sekali di handler ini; hasilnya dipakai lagi
       // oleh renderSemuaBlob supaya tidak dihitung dobel.
       const kartu = await hitungDariPesan();
-      // Foto pengirim (kalau ada) ikut jadi anak carousel, jadi jumlah anak
-      // = kartu + 1. Guard-nya di sini juga, bukan hanya jumlah kartu.
-      const jumlahAnak = kartu.totalParts + (menfes?.fotoUrl ? 1 : 0);
+      // Lampiran pengirim (foto atau video) ikut jadi anak carousel, jadi
+      // jumlah anak = kartu + 1 kalau ada lampiran. Guard-nya di sini juga,
+      // bukan hanya jumlah kartu.
+      const jumlahAnak =
+        kartu.totalParts + (menfes?.fotoUrl ? 1 : 0) + (menfes?.videoUrl ? 1 : 0);
       if (jumlahAnak > 10) {
         toast.error('Instagram feed maksimal 10 kartu — pesan terlalu panjang, pangkas dulu.');
         return;
@@ -392,11 +429,17 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
       // kontraknya array di semua jumlah kartu.
       const fd = new FormData();
       blobs.forEach((blob, i) => {
-        fd.append('images', blob, `menfes-${currentTemplate.id}-kartu-${i + 1}.jpg`);
+        fd.append('images', blob, `menfes-${currentTemplate.id}-${kodeUnik}-kartu-${i + 1}.jpg`);
       });
       fd.append('caption', caption);
 
-      const hasil = await adminAPI.postInstagram(menfes.id, fd);
+      // Video butuh waktu proses lebih lama di Instagram (transcode + cek
+      // status), jadi batas tunggu admin diperpanjang hanya untuk jalur ini.
+      const hasil = await adminAPI.postInstagram(
+        menfes.id,
+        fd,
+        menfes?.videoUrl ? 300000 : undefined
+      );
       toast.success(
         blobs.length > 1
           ? `${blobs.length} kartu tayang di Instagram.`
@@ -818,6 +861,67 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                         Download Foto
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Video pengirim — slide terakhir carousel. Sama seperti foto:
+              kalau filenya hilang, section ini jujur dan post tetap jalan
+              dengan fallback kartu-saja. */}
+          {menfes?.videoUrl && (
+            <div className="bg-ink-800 border border-ink-600 rounded-xl p-3">
+              <div className="flex justify-between items-baseline mb-1.5">
+                <p className="text-[10px] font-mono font-bold text-ink-200 tracking-widest uppercase">
+                  Video Pengirim — Slide Terakhir
+                </p>
+                <span className="text-[10px] font-mono text-brand-400 bg-brand-950/60 border border-brand-800/60 px-2 py-0.5 rounded-md">
+                  CAROUSEL
+                </span>
+              </div>
+
+              {videoHilang ? (
+                <p className="text-[11px] font-mono text-amber-400 leading-relaxed">
+                  File video tidak ditemukan di server. Post ke IG tetap bisa —
+                  kartu tayang tanpa video.
+                </p>
+              ) : (
+                <>
+                  <video
+                    src={urlAset(menfes.videoUrl)}
+                    controls
+                    playsInline
+                    onError={() => setVideoHilang(true)}
+                    className="w-full max-h-56 rounded-lg bg-ink-900 border border-ink-600"
+                  />
+                  <p className="text-[10px] text-ink-200 font-mono mt-1.5">
+                    Sudah berframe dan sudah MP4 H.264 dari Cloudinary — file
+                    yang sama dengan yang dikirim ke Instagram. Unduh untuk
+                    post manual.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleDownloadVideo}
+                    disabled={videoDownloading || sibuk}
+                    className="mt-2 w-full btn-secondary font-mono text-xs flex items-center justify-center gap-2 py-2.5 touch-manipulation disabled:opacity-40"
+                  >
+                    {videoDownloading ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Mengunduh...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download Video
                       </>
                     )}
                   </button>

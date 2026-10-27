@@ -106,7 +106,7 @@ export const adminAPI = {
   //
   // Bentuk errornya dibuat mirip axios supaya catch di komponen cukup satu
   // cara: err.response.data.error adalah pesan dari server.
-  postInstagram: async (id, formData) => {
+  postInstagram: async (id, formData, timeoutMs = 60000) => {
     const token = ambilToken();
     let res;
     try {
@@ -114,7 +114,7 @@ export const adminAPI = {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
       // Timeout dan kegagalan jaringan tidak punya HTTP status, jadi
@@ -124,7 +124,7 @@ export const adminAPI = {
       throw Object.assign(
         new Error(
           kehabisanWaktu
-            ? 'Instagram tidak menjawab dalam 60 detik. Postingan mungkin sudah tayang — cek feed @harkatnekatt sebelum mencoba lagi.'
+            ? `Instagram tidak menjawab dalam ${timeoutMs / 1000} detik. Postingan mungkin sudah tayang — cek feed @harkatnekatt sebelum mencoba lagi.`
             : 'Tidak bisa menghubungi server. Cek koneksi internet.'
         ),
         { response: null }

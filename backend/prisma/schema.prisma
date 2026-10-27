@@ -79,6 +79,13 @@ model Menfes {
   // jalur publish Instagram yang membacanya.
   fotoUrl String?
 
+  // ── Video opsional dari pengirim ───────────────────────────────────────────
+  // Satu lampiran saja: foto ATAU video, tidak dua-duanya. Isinya URL absolut
+  // Cloudinary hasil transformasi yang sudah dibingkai + dinormalkan ke MP4
+  // H.264 (lihat FRAME_VIDEO di lib/cloudinary.js), jadi yang disimpan adalah
+  // bentuk final yang diterima Instagram. NULL = tanpa video.
+  videoUrl String?
+
   // ── Lagu pilihan pengirim (opsional) ───────────────────────────────────────
   // Snapshot metadata hasil pencarian: { videoId, title, artist, duration,
   // thumb }. HANYA dibaca dashboard admin (preview embed YouTube resmi 30

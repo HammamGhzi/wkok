@@ -143,6 +143,12 @@ async function notifyNewMenfesWa({ menfes, pendingCount }) {
       caption += `Foto: Ada\n`;
     }
     
+    if (menfes.videoUrl) {
+      // Video TIDAK dilampirkan: batas media WhatsApp 16 MB, sementara video
+      // pengirim sampai 25 MB. Tautan tetap bisa dibuka anggota grup.
+      caption += `Video: Ada\n${menfes.videoUrl}\n`;
+    }
+    
     if (menfes.music) {
       const lagu = `${menfes.music.title} - ${menfes.music.artist}`;
       caption += `Lagu: ${lagu}\n`;

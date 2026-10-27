@@ -46,6 +46,7 @@ async function notifyNewMenfes(menfes) {
     `📩 *Menfess Baru Masuk!*\n\n` +
     `${senderLabel}\n\n` +
     `💬 *Pesan:*\n_${escapeMarkdown(preview)}_\n\n` +
+    (menfes.videoUrl ? `🎥 *Video:* ${menfes.videoUrl}\n\n` : '') +
     `🆔 ID: \`${menfes.id}\``;
 
   const opts = {
