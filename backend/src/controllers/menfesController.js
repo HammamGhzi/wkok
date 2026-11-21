@@ -202,6 +202,23 @@ async function submitMenfes(req, res) {
     // yang bisa dipalsukan client.
     const ipHash = hashIp(req.ip);
 
+    // ── Batas 3x per hari per IP ─────────────────────────────────────────────
+    // Cek database langsung (bukan in-memory) supaya akurat di multi-instance.
+    // Semua status dihitung (PENDING, APPROVED, maupun yang ditolak) — kuota
+    // tidak dikembalikan meski kiriman sebelumnya ditolak admin.
+    if (ipHash) {
+      const awalHariIni = new Date();
+      awalHariIni.setHours(0, 0, 0, 0);
+      const jumlahHariIni = await prisma.menfes.count({
+        where: { ipHash, createdAt: { gte: awalHariIni } },
+      });
+      if (jumlahHariIni >= 3) {
+        return res.status(429).json({
+          error: 'Kamu sudah mengirim 3 menfes hari ini. Coba lagi besok.',
+        });
+      }
+    }
+
     // Lampiran diunggah ke Cloudinary DULU, baru baris dibuat dengan URL-nya
     // sekalian — kalau barisnya yang gagal dibuat, aset tadi dibersihkan di
     // catch. urlFotos + barisJadi dipakai untuk membersihkan tanpa sempat

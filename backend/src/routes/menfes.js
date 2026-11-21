@@ -24,7 +24,7 @@ const router = express.Router();
 //
 // Fix yang sebenarnya adalah shared store (Redis), yang bisa dipakai
 // banyak instance sekaligus. Itu butuh dependency + biaya, belum dilakukan.
-const SUBMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
+const SUBMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 24 * 60 * 60 * 1000;
 const SUBMIT_MAX = Number(process.env.RATE_LIMIT_MAX_SUBMIT) || 3;
 
 // Jangan pakai X-Forwarded-For mentah: header itu dikontrol client dan bisa
@@ -34,7 +34,7 @@ const SUBMIT_MAX = Number(process.env.RATE_LIMIT_MAX_SUBMIT) || 3;
 const submitLimiter = rateLimit({
   windowMs: SUBMIT_WINDOW_MS,
   max: SUBMIT_MAX,
-  message: { error: 'Terlalu banyak pengiriman. Coba lagi dalam 15 menit.' },
+  message: { error: 'Kamu sudah mengirim 3 menfes hari ini. Coba lagi besok.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
