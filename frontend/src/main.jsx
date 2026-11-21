@@ -57,7 +57,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <App />
-      <IntroLoader />
+      {!window.location.pathname.startsWith('/4613a76adb4fb2dc') && <IntroLoader />}
     </BrowserRouter>
   </React.StrictMode>
 );
