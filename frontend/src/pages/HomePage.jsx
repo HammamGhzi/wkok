@@ -286,6 +286,7 @@ export default function HomePage() {
   const [submitted, setSubmitted] = useState(false);
   const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState('Template 4');
   const [step, setStep] = useState(1);
+  const [limitAlert, setLimitAlert] = useState(null); // pesan error 429
 
   // Lagu pilihan pengirim (step 4). Null = tanpa lagu — fieldnya tidak ikut
   // dikirim, server menyimpan kolom music sebagai NULL.
@@ -412,7 +413,12 @@ export default function HomePage() {
       toast.success('Menfess terkirim! Menunggu persetujuan admin.');
     } catch (err) {
       const msg = err.response?.data?.error || 'Gagal mengirim menfes. Coba lagi.';
-      toast.error(msg);
+      const is429 = err.response?.status === 429;
+      if (is429) {
+        setLimitAlert(msg);
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -542,6 +548,41 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-parchment-100 dark:bg-ink-800">
+
+      {/* Modal limit 429 — muncul di tengah layar */}
+      {limitAlert && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setLimitAlert(null)}
+        >
+          <div
+            className="bg-white rounded-2xl p-7 flex flex-col items-center text-center gap-3 shadow-2xl"
+            style={{ maxWidth: '300px', width: '100%' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <img
+              src="/maskot-nangis.png"
+              alt="Maskot nangis"
+              className="w-32 h-32 object-contain"
+            />
+            <p className="font-bold text-base" style={{ color: '#7f1d1d' }}>
+              sayang banget udah limit katters 
+            </p>
+            <p className="text-sm text-gray-500 leading-relaxed">
+              {limitAlert}
+            </p>
+            <button
+              onClick={() => setLimitAlert(null)}
+              className="mt-1 px-6 py-2 rounded-full text-sm font-semibold text-white"
+              style={{ background: '#7f1d1d' }}
+            >
+              Oke, besok lagi deh
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <HeaderAtas darkMode={darkMode} setDarkMode={setDarkMode} />
 
