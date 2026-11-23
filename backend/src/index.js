@@ -52,6 +52,14 @@ if (!allowedOrigins.includes('https://harkatnekat.vercel.app')) {
   allowedOrigins.push('https://harkatnekat.vercel.app');
 }
 
+// Form POST di halaman konfirmasi link WA dikirim dari domain BACKEND sendiri.
+// Browser mengirim Origin untuk POST same-origin; tanpa ini CORS menolak dan
+// global error handler meratakannya jadi {"error":"Terjadi kesalahan server."}.
+for (const nama of ['IG_PUBLIC_BASE_URL', 'WA_PUBLIC_BASE_URL', 'RENDER_EXTERNAL_URL']) {
+  const url = (process.env[nama] || '').trim().replace(/\/+$/, '');
+  if (url && !allowedOrigins.includes(url)) allowedOrigins.push(url);
+}
+
 console.log('🌐 FRONTEND_URL env:', process.env.FRONTEND_URL);
 console.log('✅ Allowed origins:', allowedOrigins);
 

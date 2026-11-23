@@ -72,6 +72,8 @@ const JPEG = Buffer.from([
   process.env.WA_SESSION_PATH = path.join(require('os').tmpdir(), 'wkok-test-wa-session');
   process.env.WA_WHATSAPP_GROUP_ID = '120363000000000001@g.us';
   process.env.WA_EXPORT_GROUP_ID = '120363000000000002@g.us';
+  process.env.IG_PUBLIC_BASE_URL =
+    process.env.IG_PUBLIC_BASE_URL || 'https://harkatnekatt.onrender.com';
   // Token palsu. Yang dibutuhkan fungsi isConfigured hanya Genome ada nilai,
   // tidak ada request yang keluar ke Instagram.
   process.env.IG_ACCESS_TOKEN = 'IGAA-token-palsu-untuk-uji-route';
@@ -468,6 +470,15 @@ const JPEG = Buffer.from([
     panggilan.at(-1)?.caption === `${TANDAN}\n\n-katt`);
   check('publish memakai kartu hasil export WA',
     panggilan.at(-1)?.buffers?.[0]?.buffer.length === JPEG.length);
+
+  // Chrome mengirim Origin pada POST form same-origin. Domain backend harus
+  // masuk daftar CORS, kalau tidak errornya jadi JSON generik dari index.js.
+  const asalBackend = new URL(process.env.IG_PUBLIC_BASE_URL).origin;
+  r = await fetch(LinkPostIg(tokenWa), {
+    method: 'POST',
+    headers: { Origin: asalBackend },
+  });
+  check('POST dari halaman backend tidak ditolak CORS', r.status === 200, `HTTP ${r.status}`);
 
   jebakan = Object.assign(new Error('sudah tayang'), { kode: 'SUDAH_TAYANG' });
   r = await fetch(LinkPostIg(tokenWa), { method: 'POST' });
