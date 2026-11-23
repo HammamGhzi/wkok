@@ -12,19 +12,22 @@ const http = require('http');
 const waPublish = require('./waPublish');
 
 const WA_WHATSAPP_GROUP_ID = process.env.WA_WHATSAPP_GROUP_ID;
+// Grup tujuan Export WA. Kalau kosong, export ikut grup notifikasi seperti
+// perilaku lama. Dua env dibaca sekali saat modul dimuat -> butuh restart.
+const WA_EXPORT_GROUP_ID = process.env.WA_EXPORT_GROUP_ID;
 // Use /tmp for ephemeral storage (works on Render), or persistent disk if configured
 const SESSION_PATH = process.env.WA_SESSION_PATH || path.join('/tmp', 'wa-session');
 
 let sock = null;
 let isConnected = false;
 
-function getGroupJid() {
-  if (!WA_WHATSAPP_GROUP_ID) return null;
-  
+function getGroupJid(override = null) {
+  const groupId = (override || WA_WHATSAPP_GROUP_ID || '').trim();
+  if (!groupId) return null;
+
   // Pastikan format grup benar (ends with @g.us)
-  const groupId = WA_WHATSAPP_GROUP_ID.trim();
   if (!groupId.endsWith('@g.us')) {
-    console.warn('⚠️  WA_WHATSAPP_GROUP_ID harus berakhir dengan @g.us');
+    console.warn('⚠️  Group ID WA harus berakhir dengan @g.us');
     return null;
   }
   
@@ -305,7 +308,13 @@ async function kirimExportWa({
   if (!sock || !isConnected) {
     throw new Error('WhatsApp bot belum terhubung. Cek QR / koneksi bot.');
   }
-  const groupJid = getGroupJid();
+  // Export boleh ke grup berbeda dari notifikasi. Kalau override diisi tapi
+  // formatnya salah, jangan diam-diam jatuh ke grup notifikasi — admin akan
+  // mengira pesannya terkirim ke grup baru.
+  if (WA_EXPORT_GROUP_ID && !WA_EXPORT_GROUP_ID.trim().endsWith('@g.us')) {
+    throw new Error('WA_EXPORT_GROUP_ID harus berakhir dengan @g.us.');
+  }
+  const groupJid = getGroupJid(WA_EXPORT_GROUP_ID);
   if (!groupJid) {
     throw new Error('WA_WHATSAPP_GROUP_ID belum diisi di .env.');
   }
@@ -426,4 +435,4 @@ async function kirimExportWa({
   return { terkirim, gagal };
 }
 
-module.exports = { initWa, notifyNewMenfesWa, kirimExportWa, ambilIdTombol };
+module.exports = { initWa, notifyNewMenfesWa, kirimExportWa, ambilIdTombol, getGroupJid };

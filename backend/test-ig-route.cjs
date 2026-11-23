@@ -67,6 +67,11 @@ const JPEG = Buffer.from([
 (async () => {
   process.env.PORT = '0';
   process.env.NODE_ENV = 'test';
+  // Bot WA: pakai sesi dan grup uji, jangan menyentuh session asli / grup
+  // produksi. waBot membaca env saat modul dimuat, jadi harus diset di sini.
+  process.env.WA_SESSION_PATH = path.join(require('os').tmpdir(), 'wkok-test-wa-session');
+  process.env.WA_WHATSAPP_GROUP_ID = '120363000000000001@g.us';
+  process.env.WA_EXPORT_GROUP_ID = '120363000000000002@g.us';
   // Token palsu. Yang dibutuhkan fungsi isConfigured hanya Genome ada nilai,
   // tidak ada request yang keluar ke Instagram.
   process.env.IG_ACCESS_TOKEN = 'IGAA-token-palsu-untuk-uji-route';
@@ -418,6 +423,12 @@ const JPEG = Buffer.from([
   console.log('\n── 9. post ke IG dari WA ──');
   const fs = require('fs/promises');
   const waPublish = require(path.join(ROOT, 'src/services/waPublish'));
+  check('grup notifikasi tetap grup lama',
+    waBot.getGroupJid() === '120363000000000001@g.us');
+  check('grup export memakai env terpisah',
+    waBot.getGroupJid(process.env.WA_EXPORT_GROUP_ID) === '120363000000000002@g.us');
+  check('override grup invalid ditolak', waBot.getGroupJid('bukan-grup') === null);
+
   const tokenWa = waCalls[0]?.postIgToken;
   check('WA: token post IG dibuat', !!tokenWa);
   check('WA: link cadangan dibuat', /\/api\/wa\/post-ig\//.test(waCalls[0]?.postIgUrl || ''));
@@ -466,6 +477,7 @@ const JPEG = Buffer.from([
   if (isiToken?.files?.[0]) {
     await fs.unlink(path.join(ROOT, 'uploads', 'ig', isiToken.files[0])).catch(() => {});
   }
+  await fs.rm(process.env.WA_SESSION_PATH, { recursive: true, force: true }).catch(() => {});
 
   // ─── Bersihkan ─────────────────────────────────────────────────────────────
   await prisma.menfes.deleteMany({ where: { id: { in: dibuat } } });
