@@ -206,11 +206,21 @@ async function submitMenfes(req, res) {
     // Cek database langsung (bukan in-memory) supaya akurat di multi-instance.
     // Semua status dihitung (PENDING, APPROVED, maupun yang ditolak) — kuota
     // tidak dikembalikan meski kiriman sebelumnya ditolak admin.
+    //
+    // "Hari ini" dihitung dalam WIB (UTC+7): tengah malam WIB = 17:00 UTC hari
+    // sebelumnya. tanpa koreksi timezone, setHours(0,0,0,0) pakai UTC dan
+    // membuat kuota reset jam 07:00 WIB, bukan tengah malam.
     if (ipHash) {
-      const awalHariIni = new Date();
-      awalHariIni.setHours(0, 0, 0, 0);
+      const now = new Date();
+      // Offset WIB dalam milidetik
+      const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+      // Waktu sekarang dalam WIB sebagai angka
+      const nowWib = now.getTime() + WIB_OFFSET_MS;
+      // Tengah malam WIB hari ini (00:00:00 WIB) dalam UTC
+      const tengahMalamWib = new Date(nowWib - (nowWib % (24 * 60 * 60 * 1000)) - WIB_OFFSET_MS);
+
       const jumlahHariIni = await prisma.menfes.count({
-        where: { ipHash, createdAt: { gte: awalHariIni } },
+        where: { ipHash, createdAt: { gte: tengahMalamWib } },
       });
       if (jumlahHariIni >= 3) {
         return res.status(429).json({

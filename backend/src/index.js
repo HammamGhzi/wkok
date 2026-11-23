@@ -18,12 +18,19 @@ const { initWa } = require('./services/waBot');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Di belakang reverse proxy (Render/Vercel/nginx), Express perlu tahu kalau
-// ada tepat 1 proxy di depan aplikasi supaya req.ip memakai X-Forwarded-For
-// yang benar. Tanpa ini, SEMUA permintaan dari satu proxy terhitung sebagai
-// satu IP: rate limit jadi tidak berguna, dan penyerang bisa memalsukan
-// X-Forwarded-For untuk lolos dari limit.
+// Di belakang reverse proxy Render, Express perlu tahu kalau ada tepat 1
+// proxy di depan aplikasi supaya req.ip memakai X-Forwarded-For yang benar.
+// Tanpa ini, SEMUA permintaan dari satu proxy terhitung sebagai satu IP:
+// rate limit jadi tidak berguna.
 app.set('trust proxy', 1);
+
+// ─── Debug IP (hapus setelah verifikasi di production) ───────────────────────
+if (process.env.DEBUG_IP === 'true') {
+  app.use((req, _res, next) => {
+    console.log(`[IP] ${req.method} ${req.path} → req.ip=${req.ip} xff=${req.headers['x-forwarded-for']}`);
+    next();
+  });
+}
 
 // ─── Security Middleware ──────────────────────────────────────────────────────
 app.use(helmet({
