@@ -286,7 +286,9 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
 
     const blobs = [];
     for (let i = 0; i < totalParts; i++) {
-      renderMenfessToCanvas(canvas, {
+      // renderMenfessToCanvas selesai setelah latar + font tergambar.
+      // Mengunci canvas sebelum itu menghasilkan JPEG hitam.
+      await renderMenfessToCanvas(canvas, {
         template: currentTemplate,
         ratio,
         message: msg,
@@ -297,10 +299,6 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
         partIndex: i,
         totalParts,
       });
-      // Render canvas ini async (img.onload + fonts.ready di dalam
-      // renderMenfessToCanvas), jadi tunggu pola 300ms yang sama seperti
-      // kode lama sebelum mengunci hasilnya jadi blob.
-      await new Promise((r) => setTimeout(r, 300));
 
       blobs.push(
         await new Promise((resolve, reject) => {

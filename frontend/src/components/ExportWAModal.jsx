@@ -54,7 +54,10 @@ export default function ExportWAModal({ menfes, onClose }) {
     const multicard = totalParts > 1;
     const blobs = [];
     for (let i = 0; i < totalParts; i++) {
-      renderMenfessToCanvas(canvas, {
+      // Fungsi render mengembalikan promise yang selesai setelah latar dan
+      // font benar-benar tergambar. Tanpa await, toBlob mengunci canvas
+      // kosong dan kartu yang terkirim jadi hitam.
+      await renderMenfessToCanvas(canvas, {
         template,
         ratio,
         message: pesan,
@@ -62,9 +65,6 @@ export default function ExportWAModal({ menfes, onClose }) {
         partIndex: i,
         totalParts,
       });
-      // renderMenfessToCanvas async (img.onload + fonts.ready). Sama seperti
-      // ExportModal: tunggu decode sebelum mengunci canvas jadi blob.
-      await new Promise((r) => setTimeout(r, 300));
       blobs.push(
         await new Promise((resolve, reject) => {
           canvas.toBlob(

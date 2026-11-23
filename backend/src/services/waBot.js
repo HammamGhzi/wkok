@@ -2,6 +2,7 @@ const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
+  generateWAMessageFromContent,
 } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
@@ -343,6 +344,54 @@ async function notifyNewMenfesWa({ menfes, pendingCount }) {
 }
 
 /**
+ * Kirim tombol "Post ke IG" + link cadangan dalam SATU pesan.
+ *
+ * sendMessage() TIDAK mendukung interactiveMessage: Baileys mengira itu media
+ * dan melempar "Invalid media type", sehingga tombol tidak pernah muncul.
+ * Pesan mentah harus dirakit lalu dikirim lewat relayMessage().
+ */
+async function kirimTombolPostIg(sock, jid, { menfesId, postIgToken, postIgUrl }) {
+  const teksLink = `Kalau tombol tidak muncul, post ke IG, klik link ini:\n${postIgUrl}`;
+  const idTombol = `${waPublish.AWAL_TOMBOL}${postIgToken || ''}`;
+
+  if (!postIgToken || idTombol.length > 200) {
+    // Id quick_reply pendek. Kalau token kepanjangan (banyak kartu), kirim
+    // link saja — tetap satu pesan, tidak dua gelembung.
+    await sock.sendMessage(jid, { text: teksLink });
+    return { tombol: false, fallback: true };
+  }
+
+  try {
+    const pesan = generateWAMessageFromContent(
+      jid,
+      {
+        interactiveMessage: {
+          header: { title: 'Post ke IG', subtitle: menfesId },
+          body: { text: teksLink },
+          footer: { text: 'Caption otomatis: isi menfes + -katt' },
+          nativeFlowMessage: {
+            buttons: [{
+              name: 'quick_reply',
+              buttonParamsJson: JSON.stringify({
+                display_text: 'Post ke IG',
+                id: idTombol,
+              }),
+            }],
+          },
+        },
+      },
+      { userJid: sock.user?.id }
+    );
+    await sock.relayMessage(jid, pesan.message, { messageId: pesan.key.id });
+    return { tombol: true, fallback: false };
+  } catch (err) {
+    console.warn('Tombol IG gagal dikirim, pakai teks link:', err.message);
+    await sock.sendMessage(jid, { text: teksLink });
+    return { tombol: false, fallback: true };
+  }
+}
+
+/**
  * Kirim hasil export WA: semua kartu + lampiran media user ke grup.
  * Dipanggil dari endpoint POST /api/admin/menfes/:id/wa-export.
  *
@@ -453,41 +502,12 @@ async function kirimExportWa({
     }
   }
 
-  // Tombol "Post ke IG" + link cadangan. Tombol interaktif sering tidak muncul
-  // di grup untuk akun non-bisnis, jadi link SELALU dikirim terlepas dari
-  // keberhasilan tombol.
+  // Tombol + link cadangan dikirim dalam satu pesan yang sama.
   if (postIgUrl) {
-    // id quick_reply punya batas pendek. Banyak kartu membuat token panjang;
-    // dalam kasus itu tombol dilewati dan link tetap dikirim.
-    const idTombol = `${waPublish.AWAL_TOMBOL}${postIgToken || ''}`;
-    if (postIgToken && idTombol.length <= 200) {
-      try {
-        await sock.sendMessage(groupJid, {
-          interactiveMessage: {
-            header: { title: 'Post ke IG', subTitle: menfesId },
-            body: { text: 'Post menfes ini ke Instagram?' },
-            footer: { text: 'Caption otomatis: isi menfes + -katt' },
-            nativeFlowMessage: {
-              buttons: [{
-                name: 'quick_reply',
-                buttonParamsJson: JSON.stringify({
-                  display_text: 'Post ke IG',
-                  id: idTombol,
-                }),
-              }],
-            },
-          },
-        });
-      } catch (err) {
-        console.warn('Tombol IG tidak bisa dikirim, pakai link cadangan:', err.message);
-      }
-    }
     try {
-      await sock.sendMessage(groupJid, {
-        text: `Kalau tombol tidak muncul, post ke IG, klik link ini:\n${postIgUrl}`,
-      });
+      await kirimTombolPostIg(sock, groupJid, { menfesId, postIgToken, postIgUrl });
     } catch (err) {
-      gagal.push(`link IG: ${err.message}`);
+      gagal.push(`tombol/link IG: ${err.message}`);
     }
   }
 
@@ -502,4 +522,5 @@ module.exports = {
   ambilIdTombol,
   getGroupJid,
   restoreSesiDariSecret,
+  kirimTombolPostIg,
 };

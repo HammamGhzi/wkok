@@ -1,4 +1,4 @@
-import { chunkLines } from './splitLines';
+import { chunkLines } from './splitLines.js';
 
 export const CANVAS_SIZE = {
   '1:1': { w: 1080, h: 1080 },
@@ -149,7 +149,7 @@ export function renderMenfessToCanvas(canvas, {
   partIndex = 0, // int: nomor kartu ini (0-based), hanya untuk badge "n/N"
   totalParts = 1, // int: jumlah kartu, 1 = tanpa badge (perilaku lama persis)
 }) {
-  if (!canvas || !template) return;
+  if (!canvas || !template) return Promise.resolve();
 
   // Clamp parameter multicard: totalParts minimal 1, partIndex di
   // [0, totalParts-1]. Default netral (0/1) → tanpa badge → perilaku lama.
@@ -171,80 +171,91 @@ export function renderMenfessToCanvas(canvas, {
   const actualMsgY = msgY !== null && msgY !== undefined ? msgY : template.defaultMessage.posY;
   const actualMsgRotate = msgRotate !== null && msgRotate !== undefined ? msgRotate : template.defaultMessage.rotate;
 
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.src = template.src;
+  // Render async: caller harus menunggu promise ini sebelum mengunci canvas
+  // jadi blob. Kalau tidak, canvas masih transparan dan JPEG keluar hitam.
+  return new Promise((resolve) => {
+    const selesai = (status) => {
+      if (onStatusChange) onStatusChange(status);
+      resolve();
+    };
 
-  img.onload = async () => {
-    if (onStatusChange) onStatusChange('ok');
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
 
-    // Pastikan Google Fonts (Poppins, Plus Jakarta Sans, dll) sudah selesai termuat di browser
-    if (document.fonts && document.fonts.ready) {
-      try {
-        await document.fonts.ready;
-      } catch {
-        // fallback jika browser tidak support font loading API
+    img.onload = async () => {
+      // Pastikan Google Fonts (Poppins, Plus Jakarta Sans, dll) sudah selesai termuat di browser
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch {
+          // fallback jika browser tidak support font loading API
+        }
       }
-    }
 
-    // 1. Gambar background gambar asli dengan aspect-fill crop
-    const imgAspect = img.width / img.height;
-    const canvasAspect = w / h;
-    let sx, sy, sw, sh;
-    if (imgAspect > canvasAspect) {
-      sh = img.height;
-      sw = img.height * canvasAspect;
-      sx = (img.width - sw) / 2;
-      sy = 0;
-    } else {
-      sw = img.width;
-      sh = img.width / canvasAspect;
-      sx = 0;
-      sy = (img.height - sh) / 2;
-    }
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+      // 1. Gambar background gambar asli dengan aspect-fill crop
+      const imgAspect = img.width / img.height;
+      const canvasAspect = w / h;
+      let sx, sy, sw, sh;
+      if (imgAspect > canvasAspect) {
+        sh = img.height;
+        sw = img.height * canvasAspect;
+        sx = (img.width - sw) / 2;
+        sy = 0;
+      } else {
+        sw = img.width;
+        sh = img.width / canvasAspect;
+        sx = 0;
+        sy = (img.height - sh) / 2;
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
 
-    // 2. Area teks pesan
-    const bounds = template.bounds[actualRatio] || template.bounds['1:1'];
+      // 2. Area teks pesan
+      const bounds = template.bounds[actualRatio] || template.bounds['1:1'];
 
-    const displayMsg = message && message.trim()
-      ? message.trim()
-      : 'Tulis pesan menfess kamu di sini...';
+      const displayMsg = message && message.trim()
+        ? message.trim()
+        : 'Tulis pesan menfess kamu di sini...';
 
-    // 3. Tulis Pesan
-    drawMessage(ctx, w, h, {
-      template,
-      bounds,
-      text: displayMsg,
-      fontSize: actualFontSize,
-      msgX: actualMsgX,
-      msgY: actualMsgY,
-      msgRotate: actualMsgRotate,
-      partLines,
-    });
+      // 3. Tulis Pesan
+      drawMessage(ctx, w, h, {
+        template,
+        bounds,
+        text: displayMsg,
+        fontSize: actualFontSize,
+        msgX: actualMsgX,
+        msgY: actualMsgY,
+        msgRotate: actualMsgRotate,
+        partLines,
+      });
 
-    // Badge nomor kartu (multicard); no-op kalau totalParts <= 1.
-    drawPartBadge(ctx, w, h, template, safePartIndex, safeTotalParts);
-  };
+      // Badge nomor kartu (multicard); no-op kalau totalParts <= 1.
+      drawPartBadge(ctx, w, h, template, safePartIndex, safeTotalParts);
+      selesai('ok');
+    };
 
-  img.onerror = () => {
-    if (template.fallbackSrc && img.src !== template.fallbackSrc) {
-      img.src = template.fallbackSrc;
-      return;
-    }
-    if (onStatusChange) onStatusChange('error');
-    drawFallback(ctx, w, h, template, {
-      message,
-      fontSize: actualFontSize,
-      msgX: actualMsgX,
-      msgY: actualMsgY,
-      msgRotate: actualMsgRotate,
-      partLines,
-    });
-    // Badge tetap digambar di jalur fallback supaya kartu multicard
-    // konsisten walau background gagal dimuat.
-    drawPartBadge(ctx, w, h, template, safePartIndex, safeTotalParts);
-  };
+    img.onerror = () => {
+      if (template.fallbackSrc && img.src !== template.fallbackSrc) {
+        img.src = template.fallbackSrc;
+        return;
+      }
+      drawFallback(ctx, w, h, template, {
+        message,
+        fontSize: actualFontSize,
+        msgX: actualMsgX,
+        msgY: actualMsgY,
+        msgRotate: actualMsgRotate,
+        partLines,
+      });
+      // Badge tetap digambar di jalur fallback supaya kartu multicard
+      // konsisten walau background gagal dimuat.
+      drawPartBadge(ctx, w, h, template, safePartIndex, safeTotalParts);
+      selesai('error');
+    };
+
+    // Handler dipasang dulu supaya gambar yang sudah ter-cache pun tetap
+    // memicu onload setelah src diisi.
+    img.src = template.src;
+  });
 }
 
 /**
