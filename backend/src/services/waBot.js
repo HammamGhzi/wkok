@@ -193,7 +193,10 @@ async function initWa() {
       if (connection === 'close') {
         isConnected = false;
         const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-        console.log('❌ WhatsApp terputus. Mencoba reconnect...', shouldReconnect);
+        console.log('❌ WhatsApp terputus. Mencoba reconnect...', shouldReconnect, {
+          statusCode: lastDisconnect?.error?.output?.statusCode,
+          reason: lastDisconnect?.error?.message,
+        });
         
         if (shouldReconnect) {
           setTimeout(() => initWa(), 3000);
