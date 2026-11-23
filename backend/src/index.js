@@ -22,12 +22,11 @@ const PORT = process.env.PORT || 3001;
 // proxy di depan aplikasi supaya req.ip memakai X-Forwarded-For yang benar.
 // Tanpa ini, SEMUA permintaan dari satu proxy terhitung sebagai satu IP:
 // rate limit jadi tidak berguna.
-// Render punya 2 hop proxy di depan aplikasi:
-// 1. Load balancer internal Render (IP 10.x.x.x)
-// 2. Cloudflare (IP publik)
-// Dengan trust proxy: 2, Express skip 2 IP dari kanan di XFF dan ambil
-// IP berikutnya sebagai req.ip — itulah IP user asli.
-app.set('trust proxy', 2);
+// Render + Cloudflare punya 3 hop proxy:
+// XFF: [IP user asli], [Cloudflare], [Render LB internal]
+// trust proxy: 3 → Express skip 3 IP dari kanan dan ambil berikutnya
+// sebagai req.ip, yaitu IP user asli.
+app.set('trust proxy', 3);
 
 // ─── Debug IP (hapus setelah verifikasi di production) ───────────────────────
 if (process.env.DEBUG_IP === 'true') {
