@@ -17,6 +17,9 @@ const WA_WHATSAPP_GROUP_ID = process.env.WA_WHATSAPP_GROUP_ID;
 const WA_EXPORT_GROUP_ID = process.env.WA_EXPORT_GROUP_ID;
 // Use /tmp for ephemeral storage (works on Render), or persistent disk if configured
 const SESSION_PATH = process.env.WA_SESSION_PATH || path.join('/tmp', 'wa-session');
+// Render Secret File: session WA tidak boleh masuk Git. File ini berisi JSON
+// {"nama-file": "isi file"} dan dipulihkan ke SESSION_PATH tiap cold start.
+const WA_SESSION_SECRET = process.env.WA_SESSION_SECRET || '/etc/secrets/wa-session.json';
 
 let sock = null;
 let isConnected = false;
@@ -100,11 +103,68 @@ async function tanganiTombolPostIg(messages) {
 }
 
 /**
+ * Pulihkan sesi Baileys dari Render Secret File.
+ *
+ * Render free tidak punya disk persisten: /tmp hilang tiap cold start. Secret
+ * file tetap ada, jadi sesi ditulis ulang sebelum useMultiFileAuthState.
+ * Kalau creds.json sudah ada, jangan timpa — Baileys menyimpan state terbaru
+ * di sana dan menimpanya bisa memutar mundur kunci session.
+ */
+function restoreSesiDariSecret() {
+  if (!fs.existsSync(WA_SESSION_SECRET)) return 0;
+  if (fs.existsSync(path.join(SESSION_PATH, 'creds.json'))) return 0;
+
+  let isi;
+  try {
+    isi = JSON.parse(fs.readFileSync(WA_SESSION_SECRET, 'utf8'));
+  } catch (err) {
+    console.warn('⚠️  Secret session WA tidak bisa dibaca:', err.message);
+    return 0;
+  }
+  if (!isi || typeof isi !== 'object' || Array.isArray(isi)) {
+    console.warn('⚠️  Format secret session WA bukan object.');
+    return 0;
+  }
+
+  const entri = Object.entries(isi).filter(([nama, isiFile]) =>
+    typeof isiFile === 'string' &&
+    nama &&
+    nama !== '.' && nama !== '..' &&
+    path.basename(nama) === nama
+  );
+  if (!entri.some(([nama]) => nama === 'creds.json')) {
+    console.warn('⚠️  Secret session WA tidak punya creds.json.');
+    return 0;
+  }
+
+  // Tulis ke staging dulu supaya secret yang rusak tidak menyisakan sesi
+  // setengah jadi di SESSION_PATH.
+  const staging = `${SESSION_PATH}.restore`;
+  try {
+    fs.rmSync(staging, { recursive: true, force: true });
+    fs.mkdirSync(staging, { recursive: true });
+    for (const [nama, isiFile] of entri) {
+      fs.writeFileSync(path.join(staging, nama), isiFile);
+    }
+    fs.rmSync(SESSION_PATH, { recursive: true, force: true });
+    fs.renameSync(staging, SESSION_PATH);
+    console.log(`🔐 Session WA dipulihkan dari secret (${entri.length} file).`);
+    return entri.length;
+  } catch (err) {
+    console.warn('⚠️  Gagal memulihkan session WA dari secret:', err.message);
+    fs.rmSync(staging, { recursive: true, force: true });
+    return 0;
+  }
+}
+
+/**
  * Inisialisasi bot WhatsApp dengan Baileys
  */
 async function initWa() {
   console.log('🔧 Inisialisasi WhatsApp bot...');
-  
+
+  restoreSesiDariSecret();
+
   // Buat folder session kalo belum ada
   if (!fs.existsSync(SESSION_PATH)) {
     fs.mkdirSync(SESSION_PATH, { recursive: true });
@@ -435,4 +495,11 @@ async function kirimExportWa({
   return { terkirim, gagal };
 }
 
-module.exports = { initWa, notifyNewMenfesWa, kirimExportWa, ambilIdTombol, getGroupJid };
+module.exports = {
+  initWa,
+  notifyNewMenfesWa,
+  kirimExportWa,
+  ambilIdTombol,
+  getGroupJid,
+  restoreSesiDariSecret,
+};

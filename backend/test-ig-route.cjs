@@ -21,6 +21,8 @@
  * Row yang dibuat test ini dihapus kembali di akhir, jadi tidak ada sisa.
  */
 const path = require('path');
+const os = require('os');
+const fsSync = require('fs');
 const Module = require('module');
 const { EventEmitter } = require('events');
 
@@ -69,7 +71,7 @@ const JPEG = Buffer.from([
   process.env.NODE_ENV = 'test';
   // Bot WA: pakai sesi dan grup uji, jangan menyentuh session asli / grup
   // produksi. waBot membaca env saat modul dimuat, jadi harus diset di sini.
-  process.env.WA_SESSION_PATH = path.join(require('os').tmpdir(), 'wkok-test-wa-session');
+  process.env.WA_SESSION_PATH = path.join(os.tmpdir(), 'wkok-test-wa-session');
   process.env.WA_WHATSAPP_GROUP_ID = '120363000000000001@g.us';
   process.env.WA_EXPORT_GROUP_ID = '120363000000000002@g.us';
   process.env.IG_PUBLIC_BASE_URL =
@@ -78,6 +80,28 @@ const JPEG = Buffer.from([
   // tidak ada request yang keluar ke Instagram.
   process.env.IG_ACCESS_TOKEN = 'IGAA-token-palsu-untuk-uji-route';
   process.env.IG_USER_ID = '1234567890';
+
+  // Secret file WA: sesi uji tidak boleh menyentuh folder produksi.
+  process.env.WA_SESSION_SECRET = path.join(os.tmpdir(), 'wkok-test-wa-secret.json');
+  fsSync.rmSync(process.env.WA_SESSION_PATH, { recursive: true, force: true });
+  fsSync.writeFileSync(process.env.WA_SESSION_SECRET, JSON.stringify({
+    'creds.json': JSON.stringify({ me: { id: 'uji' } }),
+    'pre-key-1.json': JSON.stringify({ uji: true }),
+  }));
+
+  const waBot = require(path.join(ROOT, 'src/services/waBot'));
+  waBot.restoreSesiDariSecret();
+  check('session WA dipulihkan dari secret',
+    fsSync.existsSync(path.join(process.env.WA_SESSION_PATH, 'creds.json')) &&
+    fsSync.existsSync(path.join(process.env.WA_SESSION_PATH, 'pre-key-1.json')));
+  fsSync.writeFileSync(
+    path.join(process.env.WA_SESSION_PATH, 'creds.json'),
+    'creds-session-aktif'
+  );
+  waBot.restoreSesiDariSecret();
+  check('secret tidak menimpa session yang sudah ada',
+    fsSync.readFileSync(path.join(process.env.WA_SESSION_PATH, 'creds.json'), 'utf8') ===
+      'creds-session-aktif');
 
   const { PrismaClient } = require('@prisma/client');
   const bcrypt = require('bcryptjs');
@@ -360,7 +384,6 @@ const JPEG = Buffer.from([
 
   // ═══ 8. Route Export WA ═══════════════════════════════════════════════════
   console.log('\n── 8. export WA ──');
-  const waBot = require(path.join(ROOT, 'src/services/waBot'));
   const waCalls = [];
   waBot.kirimExportWa = async (args) => {
     waCalls.push(args);
@@ -489,6 +512,7 @@ const JPEG = Buffer.from([
     await fs.unlink(path.join(ROOT, 'uploads', 'ig', isiToken.files[0])).catch(() => {});
   }
   await fs.rm(process.env.WA_SESSION_PATH, { recursive: true, force: true }).catch(() => {});
+  await fs.rm(process.env.WA_SESSION_SECRET, { force: true }).catch(() => {});
 
   // ─── Bersihkan ─────────────────────────────────────────────────────────────
   await prisma.menfes.deleteMany({ where: { id: { in: dibuat } } });

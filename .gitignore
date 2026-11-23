@@ -49,6 +49,10 @@ backend/perf-probe.mjs
 backend/perf-discriminate.mjs
 backend/ukur-satu-kondisi.cjs
 
-# Hasil test & screenshot verifikasi lokal — alat bukti kerja, bukan bagian aplikasi.
+# Hasil test & screenshot verifikasi lokal ï¿½ alat bukti kerja, bukan bagian aplikasi.
 backend/test-results.txt
 frontend/*-verification.png
+
+# Sesi WA = kredensial WhatsApp. Simpan di Render Secret File, jangan di Git.
+backend/wa-session/
+backend/wa-session.json
