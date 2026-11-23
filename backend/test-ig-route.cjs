@@ -437,6 +437,14 @@ const JPEG = Buffer.from([
     auditLines().some((l) => l.includes('menfes.wa_export'))
   );
 
+  // Export WA sengaja stateless: menfes yang sama boleh dikirim berulang kali.
+  // Token selalu dibuat baru supaya tombol dari export lama tidak bentrok.
+  const tokenPertama = waCalls[0]?.postIgToken;
+  r = await KirimWa(approved.id, formDengan({ image: JPEG }));
+  check('WA: export ulang menfes sama tetap 200', r.status === 200, `HTTP ${r.status}`);
+  check('WA: export ulang benar-benar mengirim lagi', waCalls.length === 2, `${waCalls.length} panggilan`);
+  check('WA: token export ulang berbeda', !!waCalls[1]?.postIgToken && waCalls[1].postIgToken !== tokenPertama);
+
   waBot.kirimExportWa = async () => {
     throw new Error('bot WA mati');
   };

@@ -602,10 +602,13 @@ async function postMenfesToWa(req, res) {
           id: menfes.id,
           files: tersimpan.map((s) => s.namaFile),
         });
+        // Kalau env base URL belum diisi di Render, pakai host request sendiri.
+        // Tanpa ini postIgUrl null dan tombol + link TIDAK dikirim sama sekali.
         const base = String(
-          process.env.WA_PUBLIC_BASE_URL || process.env.IG_PUBLIC_BASE_URL || ''
+          process.env.WA_PUBLIC_BASE_URL ||
+          process.env.IG_PUBLIC_BASE_URL ||
+          `${req.protocol}://${req.get('host')}`
         ).replace(/\/+$/, '');
-        if (!base) throw new Error('WA_PUBLIC_BASE_URL / IG_PUBLIC_BASE_URL kosong.');
         postIgUrl = `${base}/api/wa/post-ig/${postIgToken}`;
       } catch (err) {
         // Gagal menyiapkan tautan TIDAK boleh menggagalkan kirim WA.

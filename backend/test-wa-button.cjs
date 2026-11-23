@@ -1,12 +1,13 @@
 /**
  * Uji pesan tombol "Post ke IG" yang dikirim dari Export WA.
  *
- * Dua hal yang harus benar:
- *  1. Tombol native flow tidak bisa dikirim lewat sendMessage(). Baileys
- *     mengira itu media dan melempar "Invalid media type". Pesan harus
- *     dirakit dengan generateWAMessageFromContent lalu relayMessage().
- *  2. Link cadangan harus ikut di body pesan yang sama dengan tombol, bukan
+ * Yang harus benar:
+ *  1. native flow interactiveMessage tidak dirender di grup WA — pesannya
+ *     ikut hilang beserta link di body-nya. Pakai templateMessage dengan
+ *     quickReplyButton yang tampil di grup.
+ *  2. Link cadangan ikut di content pesan yang sama dengan tombol, bukan
  *     pesan terpisah — admin minta satu chat, satu gelembung.
+ *  3. Kirim dua kali ke menfes yang sama tetap menghasilkan token berbeda.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -31,7 +32,7 @@ function sockPalsu() {
   };
 }
 
-test('tombol Post ke IG dirakit sebagai interactiveMessage dan link ikut di body yang sama', async () => {
+test('tombol Post ke IG dirakit sebagai templateMessage dan link ikut di pesan yang sama', async () => {
   const sock = sockPalsu();
   const args = {
     menfesId: 'cm-uji-1',
@@ -47,15 +48,12 @@ test('tombol Post ke IG dirakit sebagai interactiveMessage dan link ikut di body
   assert.equal(jid, '120363000000000002@g.us');
   assert.ok(opts.messageId, 'relay butuh messageId');
 
-  const interaktif = message.interactiveMessage;
-  assert.ok(interaktif, 'payload harus interactiveMessage');
-  assert.match(interaktif.body.text, /post-ig\/token-pendek/, 'link cadangan ada di body');
-  const tombol = interaktif.nativeFlowMessage?.buttons?.[0];
-  assert.equal(tombol?.name, 'quick_reply');
-  assert.deepEqual(JSON.parse(tombol.buttonParamsJson), {
-    display_text: 'Post ke IG',
-    id: 'igpub:token-pendek',
-  });
+  const templat = message.templateMessage?.hydratedFourRowTemplate;
+  assert.ok(templat, 'payload harus templateMessage.hydratedFourRowTemplate');
+  assert.match(templat.hydratedContentText, /post-ig\/token-pendek/, 'link cadangan ada di content');
+  const tombol = templat.hydratedButtons?.[0]?.quickReplyButton;
+  assert.equal(tombol?.displayText, 'Post ke IG');
+  assert.equal(tombol?.id, 'igpub:token-pendek');
 });
 
 test('token panjang tidak mengirim tombol dan pakai satu pesan teks', async () => {

@@ -346,17 +346,19 @@ async function notifyNewMenfesWa({ menfes, pendingCount }) {
 /**
  * Kirim tombol "Post ke IG" + link cadangan dalam SATU pesan.
  *
- * sendMessage() TIDAK mendukung interactiveMessage: Baileys mengira itu media
- * dan melempar "Invalid media type", sehingga tombol tidak pernah muncul.
- * Pesan mentah harus dirakit lalu dikirim lewat relayMessage().
+ * `interactiveMessage.nativeFlowMessage` (native flow) tidak dirender di grup
+ * WA — pesannya ikut hilang, jadi link yang ada di body juga tidak terlihat.
+ * `templateMessage.hydratedFourRowTemplate` dengan quickReplyButton adalah
+ * format tombol yang tetap tampil di grup, dan balasannya masuk lewat
+ * `templateButtonReplyMessage` (sudah dibaca ambilIdTombol()).
  */
 async function kirimTombolPostIg(sock, jid, { menfesId, postIgToken, postIgUrl }) {
-  const teksLink = `Kalau tombol tidak muncul, post ke IG, klik link ini:\n${postIgUrl}`;
+  const teksLink = `jika tidak ada tombol, post ke ig, klik link ini:\n${postIgUrl}`;
   const idTombol = `${waPublish.AWAL_TOMBOL}${postIgToken || ''}`;
 
   if (!postIgToken || idTombol.length > 200) {
-    // Id quick_reply pendek. Kalau token kepanjangan (banyak kartu), kirim
-    // link saja — tetap satu pesan, tidak dua gelembung.
+    // Id quick_reply punya batas pendek. Kalau token kepanjangan (banyak
+    // kartu), kirim link saja — tetap satu pesan, satu gelembung.
     await sock.sendMessage(jid, { text: teksLink });
     return { tombol: false, fallback: true };
   }
@@ -365,17 +367,16 @@ async function kirimTombolPostIg(sock, jid, { menfesId, postIgToken, postIgUrl }
     const pesan = generateWAMessageFromContent(
       jid,
       {
-        interactiveMessage: {
-          header: { title: 'Post ke IG', subtitle: menfesId },
-          body: { text: teksLink },
-          footer: { text: 'Caption otomatis: isi menfes + -katt' },
-          nativeFlowMessage: {
-            buttons: [{
-              name: 'quick_reply',
-              buttonParamsJson: JSON.stringify({
-                display_text: 'Post ke IG',
+        templateMessage: {
+          hydratedFourRowTemplate: {
+            hydratedTitleText: 'Post ke IG',
+            hydratedContentText: teksLink,
+            hydratedFooterText: `Menfes ${menfesId} · caption otomatis: isi menfes + -katt`,
+            hydratedButtons: [{
+              quickReplyButton: {
+                displayText: 'Post ke IG',
                 id: idTombol,
-              }),
+              },
             }],
           },
         },
