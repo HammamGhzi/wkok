@@ -10,6 +10,7 @@ const menfesRoutes = require('./routes/menfes');
 const adminRoutes = require('./routes/admin');
 const siteRoutes = require('./routes/site');
 const musicRoutes = require('./routes/music');
+const waPublishRoutes = require('./routes/waPublish');
 const authMiddleware = require('./middleware/auth');
 const { router: telegramRouter, registerTelegramCallbacks } = require('./routes/telegram');
 const { initBot } = require('./services/telegramBot');
@@ -88,6 +89,16 @@ app.post(
   adminRoutes.postMenfesToInstagram
 );
 
+// Export WA: kirim kartu hasil render + lampiran ke grup WhatsApp.
+// Memakai parser gambar yang sama dengan jalur IG (dipasang sebelum body
+// parser global, auth dulu lalu parser) supaya perilakunya konsisten.
+app.post(
+  '/api/admin/menfes/:id/wa-export',
+  authMiddleware,
+  adminRoutes.parserGambar,
+  adminRoutes.postMenfesToWa
+);
+
 // ─── Serve uploaded template ──────────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
@@ -129,6 +140,10 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/site', siteRoutes);
 app.use('/api/music', musicRoutes);
 app.use('/api/telegram', telegramRouter);
+
+// Link "Post ke IG" dari pesan WA. Tanpa auth admin: token bertanda tangan yang
+// dibuat saat Export WA yang menjadi izin. GET hanya halaman konfirmasi.
+app.use('/api/wa/post-ig', waPublishRoutes);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((req, res) => {

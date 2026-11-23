@@ -7,6 +7,7 @@ const {
   deleteMenfes,
   getStats,
   postMenfesToInstagram,
+  postMenfesToWa,
   retryMenfes,
 } = require('../controllers/adminController');
 const { setSiteOpen } = require('../controllers/siteController');
@@ -92,14 +93,14 @@ router.patch('/menfes/:id/retry', retryMenfes);
 // DELETE /api/admin/menfes/:id — Hapus menfes
 router.delete('/menfes/:id', deleteMenfes);
 
-// Route publikasi Instagram (/menfes/:id/post) TIDAK didefinisikan di sini.
-// Dipasang di src/index.js sebelum body parser global, dengan urutan auth lalu
-// parser gambar. Kalau route itu didefinisikan di sini juga, yang di sini tidak
-// akan pernah dipanggil, dan Kalau registrasi di index.js terhapus, admin akan
-// melihat 500 mysterious sebagai pengganti 404 yang jujur.
+// Route unggah gambar (/menfes/:id/post untuk IG, /menfes/:id/wa-export untuk
+// WA) TIDAK didefinisikan di sini. Dipasang di src/index.js sebelum body parser
+// global, dengan urutan auth lalu parser gambar. Kalau didefinisikan di sini
+// juga, yang di sini tidak akan pernah dipanggil.
 //
 // Dipakai src/index.js: parserGambar dan handler-nya.
 module.exports = router;
 module.exports.parserGambar = parserGambar;
 module.exports.postMenfesToInstagram = postMenfesToInstagram;
+module.exports.postMenfesToWa = postMenfesToWa;
 module.exports.retryMenfes = retryMenfes;

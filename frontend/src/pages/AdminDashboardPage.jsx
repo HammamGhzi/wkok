@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
 import { adminAPI, siteAPI, urlAset } from '../api';
 import ExportModal from '../components/ExportModal';
+import ExportWAModal from '../components/ExportWAModal';
 import { TEMPLATES, parseTemplateFromMenfes, getTemplateById } from '../config/templates';
 import { clampPage, paginationItems } from '../utils/pagination.js';
 
@@ -87,6 +88,7 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(null);
   const [exportTarget, setExportTarget] = useState(null);
+  const [waTarget, setWaTarget] = useState(null);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState(paginationKosong);
   const [deleteTarget, setDeleteTarget] = useState(null); // Custom confirm modal
@@ -177,7 +179,7 @@ export default function AdminDashboardPage() {
   // Keyboard shortcuts (aksi pada card yang sedang di-hover/terakhir di-touch)
   useEffect(() => {
     function handleKey(e) {
-      if (deleteTarget || exportTarget) return; // kalau ada modal, jangan shortcut
+      if (deleteTarget || exportTarget || waTarget) return; // kalau ada modal, jangan shortcut
       if (hoveredId == null) return;
       const item = menfes.find((m) => m.id === hoveredId);
       if (!item) return;
@@ -191,7 +193,7 @@ export default function AdminDashboardPage() {
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [hoveredId, menfes, deleteTarget, exportTarget]);
+  }, [hoveredId, menfes, deleteTarget, exportTarget, waTarget]);
 
   async function handleApprove(id) {
     setActionLoading(id + '_approve');
@@ -786,6 +788,15 @@ export default function AdminDashboardPage() {
                           Export IG
                         </button>
                       )}
+                      {item.status === 'APPROVED' && (
+                        <button
+                          onClick={() => setWaTarget(item)}
+                          className="flex items-center gap-1 bg-green-900/50 hover:bg-green-800 text-green-200 text-[11px] sm:text-xs font-mono font-semibold px-2.5 py-1.5 sm:py-1.5 rounded-lg border border-green-700/40 hover:border-green-600/60 transition-colors touch-manipulation"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                          Export WA
+                        </button>
+                      )}
 
                       {/* Hapus — push ke kanan */}
                       <button
@@ -850,6 +861,10 @@ export default function AdminDashboardPage() {
 
       {exportTarget && (
         <ExportModal menfes={exportTarget} onClose={() => setExportTarget(null)} />
+      )}
+
+      {waTarget && (
+        <ExportWAModal menfes={waTarget} onClose={() => setWaTarget(null)} />
       )}
 
       {/* Custom delete confirmation modal */}

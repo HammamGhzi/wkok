@@ -140,4 +140,38 @@ export const adminAPI = {
     }
     return data;
   },
+
+  // Kirim kartu hasil render + lampiran ke grup WA. Sama seperti postInstagram:
+  // fetch native dengan FormData (Content-Type diisi browser), timeout 60 detik.
+  postWa: async (id, formData, timeoutMs = 60000) => {
+    const token = ambilToken();
+    let res;
+    try {
+      res = await fetch(`${BASE_URL}/admin/menfes/${id}/wa-export`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      const kehabisanWaktu =
+        err.name === 'TimeoutError' || err.name === 'AbortError';
+      throw Object.assign(
+        new Error(
+          kehabisanWaktu
+            ? 'WhatsApp tidak menjawab dalam waktu yang ditentukan.'
+            : 'Tidak bisa menghubungi server. Cek koneksi internet.'
+        ),
+        { response: null }
+      );
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      tangani401(res.status);
+      throw Object.assign(new Error(data.error || `Gagal (HTTP ${res.status}).`), {
+        response: { data, status: res.status },
+      });
+    }
+    return data;
+  },
 };

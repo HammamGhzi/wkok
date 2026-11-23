@@ -351,6 +351,122 @@ const JPEG = Buffer.from([
   check('pesan menyebut nama env', /IG_ACCESS_TOKEN/.test(await r.text()));
   process.env.IG_ACCESS_TOKEN = simpanToken;
 
+  // ═══ 8. Route Export WA ═══════════════════════════════════════════════════
+  console.log('\n── 8. export WA ──');
+  const waBot = require(path.join(ROOT, 'src/services/waBot'));
+  const waCalls = [];
+  waBot.kirimExportWa = async (args) => {
+    waCalls.push(args);
+    return {
+      terkirim: args.kartuBuffers.length + (args.fotoUrls?.length || 0) + (args.videoUrl ? 1 : 0),
+      gagal: [],
+    };
+  };
+  waCalls.length = 0;
+
+  const KirimWa = (id, fd, headers = {}) =>
+    fetch(`${base}/api/admin/menfes/${id}/wa-export`, {
+      method: 'POST',
+      headers: { ...KIRIM, ...headers },
+      body: fd,
+    });
+
+  r = await fetch(`${base}/api/admin/menfes/${approved.id}/wa-export`, {
+    method: 'POST',
+    headers: { 'X-Forwarded-For': '10.91.0.6' },
+    body: formDengan({ image: JPEG }),
+  });
+  check('WA: tanpa token ditolak 401', r.status === 401, `HTTP ${r.status}`);
+  check('WA: tidak ada panggilan kirim', waCalls.length === 0);
+
+  r = await fetch(`${base}/api/admin/menfes/${approved.id}/wa-export`, {
+    method: 'POST',
+    headers: { ...KIRIM, 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  check('WA: JSON ditolak 415', r.status === 415, `HTTP ${r.status}`);
+
+  r = await KirimWa(approved.id, new FormData());
+  check('WA: tanpa gambar ditolak 400', r.status === 400, `HTTP ${r.status}`);
+  check('WA: tidak ada panggilan kirim', waCalls.length === 0);
+
+  r = await KirimWa(pending.id, formDengan({ image: JPEG }));
+  check('WA: PENDING ditolak 409', r.status === 409, `HTTP ${r.status}`);
+  check('WA: tidak ada panggilan kirim', waCalls.length === 0);
+
+  waCalls.length = 0;
+  r = await KirimWa(approved.id, formDengan({ image: JPEG }));
+  const badanWa = await r.json();
+  check('WA: sukses 200', r.status === 200, `HTTP ${r.status}`);
+  check('WA: menerima satu kartu', waCalls.length === 1 && waCalls[0].kartuBuffers.length === 1);
+  check('WA: meneruskan teks menfes', waCalls[0]?.message === TANDAN);
+  check('WA: meneruskan id menfes', waCalls[0]?.menfesId === approved.id);
+  check('WA: respons berisi jumlah terkirim', badanWa.data?.terkirim === 1);
+  check(
+    'WA: audit mencatat menfes.wa_export',
+    auditLines().some((l) => l.includes('menfes.wa_export'))
+  );
+
+  waBot.kirimExportWa = async () => {
+    throw new Error('bot WA mati');
+  };
+  r = await KirimWa(approved.id, formDengan({ image: JPEG }));
+  check('WA: kegagalan kirim jadi 500', r.status === 500, `HTTP ${r.status}`);
+  check('WA: pesan error diteruskan', /bot WA mati/.test(await r.text()));
+
+  // ═══ 9. Tombol + link Post ke IG dari pesan WA ════════════════════════════
+  console.log('\n── 9. post ke IG dari WA ──');
+  const fs = require('fs/promises');
+  const waPublish = require(path.join(ROOT, 'src/services/waPublish'));
+  const tokenWa = waCalls[0]?.postIgToken;
+  check('WA: token post IG dibuat', !!tokenWa);
+  check('WA: link cadangan dibuat', /\/api\/wa\/post-ig\//.test(waCalls[0]?.postIgUrl || ''));
+  const isiToken = tokenWa ? waPublish.bacaToken(tokenWa) : null;
+  check('token menunjuk ke menfes', isiToken?.id === approved.id);
+  check('token membawa satu kartu', isiToken?.files?.length === 1);
+  check('token rusak ditolak', (() => {
+    try { waPublish.bacaToken(`${tokenWa}x`); return false; } catch { return true; }
+  })());
+
+  check('baca id tombol native flow', waBot.ambilIdTombol({
+    interactiveResponseMessage: {
+      nativeFlowResponseMessage: { paramsJson: JSON.stringify({ id: 'igpub:abc' }) },
+    },
+  }) === 'igpub:abc');
+  check('baca id tombol lama', waBot.ambilIdTombol({
+    buttonsResponseMessage: { selectedButtonId: 'igpub:def' },
+  }) === 'igpub:def');
+  check('balasan bukan tombol diabaikan', waBot.ambilIdTombol({ text: 'halo' }) === null);
+
+  const LinkPostIg = (t) => `${base}/api/wa/post-ig/${t}`;
+  r = await fetch(LinkPostIg('rusak'), { method: 'POST' });
+  check('POST link rusak ditolak 400', r.status === 400, `HTTP ${r.status}`);
+
+  panggilan.length = 0;
+  r = await fetch(LinkPostIg(tokenWa));
+  const halamanKonfirmasi = await r.text();
+  check('GET link cuma halaman konfirmasi', r.status === 200 && /Post ke Instagram\?/.test(halamanKonfirmasi));
+  check('halaman menampilkan caption -katt', /-katt/.test(halamanKonfirmasi));
+  check('GET tidak mempublish', panggilan.length === 0);
+
+  panggilan.length = 0;
+  jebakan = null;
+  r = await fetch(LinkPostIg(tokenWa), { method: 'POST' });
+  check('POST link berhasil publish', r.status === 200, `HTTP ${r.status}`);
+  check('caption otomatis isi menfes + -katt',
+    panggilan.at(-1)?.caption === `${TANDAN}\n\n-katt`);
+  check('publish memakai kartu hasil export WA',
+    panggilan.at(-1)?.buffers?.[0]?.buffer.length === JPEG.length);
+
+  jebakan = Object.assign(new Error('sudah tayang'), { kode: 'SUDAH_TAYANG' });
+  r = await fetch(LinkPostIg(tokenWa), { method: 'POST' });
+  check('POST ulang ditolak 409', r.status === 409, `HTTP ${r.status}`);
+  jebakan = null;
+
+  if (isiToken?.files?.[0]) {
+    await fs.unlink(path.join(ROOT, 'uploads', 'ig', isiToken.files[0])).catch(() => {});
+  }
+
   // ─── Bersihkan ─────────────────────────────────────────────────────────────
   await prisma.menfes.deleteMany({ where: { id: { in: dibuat } } });
   await prisma.admin.deleteMany({ where: { username: USER } });

@@ -8,6 +8,8 @@ const { parsePaging } = require('../lib/paging');
 const igApi = require('../services/instagramApi');
 const igPublish = require('../services/igPublish');
 const { hapusFoto: hapusAsetCloudinary, hapusVideo: hapusVideoCloudinary } = require('../lib/cloudinary');
+const waBot = require('../services/waBot');
+const waPublish = require('../services/waPublish');
 
 // Kunci cache untuk daftar admin. Status sudah diambil dari daftar putih di
 // bawah dan page serta limit sudah dijepit parsePaging, jadi ruang kuncinya
@@ -510,6 +512,139 @@ async function postMenfesToInstagram(req, res) {
   }
 }
 
+/**
+ * POST /api/admin/menfes/:id/wa-export
+ * Kirim kartu hasil render + lampiran media ke grup WhatsApp.
+ *
+ * Beda dengan notifikasi otomatis (notifyNewMenfesWa): ini dipicu manual admin
+ * lewat tombol "Kirim ke WA" di dashboard, memakai kartu hasil render canvas
+ * yang sama seperti Export IG. Lampiran diambil dari DB, bukan dari form.
+ */
+async function postMenfesToWa(req, res) {
+  try {
+    const { id } = req.params;
+
+    const menfes = await prisma.menfes.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        message: true,
+        fotoUrls: true,
+        videoUrl: true,
+      },
+    });
+    if (!menfes) {
+      return res.status(404).json({ error: 'Menfes tidak ditemukan.' });
+    }
+    if (menfes.status !== 'APPROVED') {
+      return res.status(409).json({
+        error: `Hanya menfes APPROVED yang boleh diekspor ke WA. Status: ${menfes.status}.`,
+      });
+    }
+
+    // Sama seperti jalur IG: body harus Buffer mentah dari express.raw (parser
+    // dipasang sebelum body parser global di index.js). Kalau bukan Buffer,
+    // Content-Type salah dan request sudah dimakan express.json.
+    if (!Buffer.isBuffer(req.body)) {
+      return res.status(415).json({
+        error: 'Kirim multipart/form-data dengan field images.',
+      });
+    }
+
+    let form;
+    try {
+      form = await new Response(req.body, {
+        headers: { 'content-type': req.headers['content-type'] },
+      }).formData();
+    } catch (err) {
+      return res.status(400).json({ error: 'Data unggahan tidak bisa dibaca.' });
+    }
+
+    const files = form.getAll('images');
+    if (files.length === 0) {
+      return res.status(400).json({
+        error: 'Field images wajib berisi minimal satu kartu hasil render.',
+      });
+    }
+
+    const kartuBuffers = [];
+    for (let i = 0; i < files.length; i++) {
+      if (!(files[i] instanceof File) || files[i].size === 0) {
+        return res.status(400).json({ error: `Kartu ${i + 1} kosong atau bukan file gambar.` });
+      }
+      kartuBuffers.push(Buffer.from(await files[i].arrayBuffer()));
+    }
+
+    // Tombol/link "Post ke IG" butuh kartu yang bisa diambil backend tanpa
+    // browser. Simpan salinan kartu saat export, lalu taruh nama filenya di
+    // token bertanda tangan. Ini NAMBAH file di uploads/ig tiap export —
+    // shortcut: storage ephemeral, hapus saat tidak dipakai lagi kalau volume
+    // mulai penuh.
+    let postIgToken = null;
+    let postIgUrl = null;
+    const jumlahAnak = kartuBuffers.length
+      + (menfes.fotoUrls || []).length
+      + (menfes.videoUrl ? 1 : 0);
+    if (jumlahAnak > 10) {
+      console.warn(`Export WA: ${jumlahAnak} anak melebihi batas IG 10, tombol Post ke IG dilewati.`);
+    } else {
+      try {
+        const tersimpan = [];
+        for (let i = 0; i < kartuBuffers.length; i++) {
+          tersimpan.push(await igPublish.simpanGambar(
+            kartuBuffers[i],
+            files[i].type || 'image/jpeg',
+            menfes.id
+          ));
+        }
+        postIgToken = waPublish.buatToken({
+          id: menfes.id,
+          files: tersimpan.map((s) => s.namaFile),
+        });
+        const base = String(
+          process.env.WA_PUBLIC_BASE_URL || process.env.IG_PUBLIC_BASE_URL || ''
+        ).replace(/\/+$/, '');
+        if (!base) throw new Error('WA_PUBLIC_BASE_URL / IG_PUBLIC_BASE_URL kosong.');
+        postIgUrl = `${base}/api/wa/post-ig/${postIgToken}`;
+      } catch (err) {
+        // Gagal menyiapkan tautan TIDAK boleh menggagalkan kirim WA.
+        console.warn('Export WA: tombol Post ke IG dilewati:', err.message);
+        postIgToken = null;
+        postIgUrl = null;
+      }
+    }
+
+    const hasil = await waBot.kirimExportWa({
+      menfesId: menfes.id,
+      message: menfes.message,
+      fotoUrls: menfes.fotoUrls || [],
+      videoUrl: menfes.videoUrl || null,
+      kartuBuffers,
+      postIgToken,
+      postIgUrl,
+    });
+
+    audit('menfes.wa_export', req, {
+      menfesId: menfes.id,
+      kartu: kartuBuffers.length,
+      foto: (menfes.fotoUrls || []).length,
+      video: !!menfes.videoUrl,
+    });
+
+    res.json({
+      message: 'Menfes berhasil dikirim ke WhatsApp.',
+      data: {
+        id: menfes.id,
+        ...hasil,
+      },
+    });
+  } catch (err) {
+    console.error('Export WA error:', err);
+    res.status(500).json({ error: err.message || 'Gagal mengirim ke WhatsApp.' });
+  }
+}
+
 module.exports = {
   getAllMenfes,
   approveMenfes,
@@ -517,5 +652,6 @@ module.exports = {
   deleteMenfes,
   getStats,
   postMenfesToInstagram,
+  postMenfesToWa,
   retryMenfes,
 };
