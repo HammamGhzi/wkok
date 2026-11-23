@@ -511,6 +511,14 @@ const JPEG = Buffer.from([
   });
   check('POST dari halaman backend tidak ditolak CORS', r.status === 200, `HTTP ${r.status}`);
 
+  // Browser di dalam aplikasi WhatsApp mengirim Origin: null saat submit form.
+  // Pakai token rusak supaya tidak mempublish: yang diuji cuma gerbang CORS.
+  r = await fetch(LinkPostIg('rusak'), {
+    method: 'POST',
+    headers: { Origin: 'null' },
+  });
+  check('POST dengan Origin null tidak jadi 500 CORS', r.status === 400, `HTTP ${r.status}`);
+
   jebakan = Object.assign(new Error('sudah tayang'), { kode: 'SUDAH_TAYANG' });
   r = await fetch(LinkPostIg(tokenWa), { method: 'POST' });
   check('POST ulang ditolak 409', r.status === 409, `HTTP ${r.status}`);

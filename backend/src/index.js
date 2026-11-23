@@ -63,6 +63,14 @@ for (const nama of ['IG_PUBLIC_BASE_URL', 'WA_PUBLIC_BASE_URL', 'RENDER_EXTERNAL
 console.log('🌐 FRONTEND_URL env:', process.env.FRONTEND_URL);
 console.log('✅ Allowed origins:', allowedOrigins);
 
+// Browser di aplikasi WhatsApp mengirim Origin: null saat submit form
+// konfirmasi. Endpoint ini memakai token di URL, bukan cookie, jadi CORS tidak
+// perlu memeriksa asal request di sini.
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/wa/post-ig')) delete req.headers.origin;
+  next();
+});
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
