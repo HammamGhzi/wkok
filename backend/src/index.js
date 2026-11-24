@@ -1,5 +1,11 @@
 require('dotenv').config();
 require('dotenv').config({ path: '/etc/secrets/.env', override: false });
+
+// Debug: log semua env paths yang dicoba
+console.log('[ENV] cwd:', process.cwd());
+console.log('[ENV] GROQ exists:', !!process.env.GROQ_API_KEY);
+console.log('[ENV] /etc/secrets exists:', (() => { try { require('fs').readdirSync('/etc/secrets'); return true; } catch { return false; } })());
+console.log('[ENV] /etc/secrets files:', (() => { try { return require('fs').readdirSync('/etc/secrets').join(', '); } catch { return 'tidak ada'; } })());
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
