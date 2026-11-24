@@ -77,7 +77,7 @@ export default function ChatbotWidget() {
       <button
         onClick={toggleBuka}
         aria-label="Buka asisten"
-        className="fixed bottom-5 right-5 z-50 w-16 h-16 rounded-full shadow-lg
+        className="fixed bottom-24 right-5 sm:bottom-5 z-50 w-16 h-16 rounded-full shadow-lg
                    transition-transform duration-200 hover:scale-110 active:scale-95
                    focus:outline-none focus:ring-2 focus:ring-brand-400"
       >
@@ -95,7 +95,7 @@ export default function ChatbotWidget() {
 
       {/* Panel chat */}
       <div
-        className={`fixed bottom-24 right-5 z-50 w-80 sm:w-96 flex flex-col
+        className={`fixed bottom-44 right-5 sm:bottom-24 z-50 w-80 sm:w-96 flex flex-col
                     rounded-2xl shadow-2xl overflow-hidden
                     bg-white dark:bg-ink-800
                     border border-parchment-200 dark:border-ink-700
