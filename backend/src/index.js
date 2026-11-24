@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('dotenv').config({ path: '/etc/secrets/.env', override: false });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
