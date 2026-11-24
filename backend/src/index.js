@@ -126,8 +126,12 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     app: 'Menfes Harkat Nekat',
+    version: 'chatbot-ai-fallback',
     telegram: !!process.env.TELEGRAM_BOT_TOKEN,
     whatsapp: !!process.env.WA_ADMIN_NUMBER,
+    groq: !!process.env.GROQ_API_KEY,
+    gemini: !!process.env.GEMINI_API_KEY,
+    openrouter: !!process.env.OPENROUTER_API_KEY,
     timestamp: new Date().toISOString(),
   });
 });
