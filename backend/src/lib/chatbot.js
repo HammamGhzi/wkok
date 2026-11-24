@@ -111,7 +111,17 @@ const NORMALISASI = {
   buka: 'buka', open: 'buka', tutup: 'tutup', close: 'tutup',
   closed: 'tutup',
 
-  // Kata sambung & filler yang tidak perlu
+  // Terima kasih & oke
+  makasih: 'terima kasih', makasi: 'terima kasih', mksh: 'terima kasih',
+  mks: 'terima kasih', thx: 'terima kasih', thanks: 'terima kasih',
+  tq: 'terima kasih', ty: 'terima kasih', tengkyu: 'terima kasih',
+  tenkyu: 'terima kasih', thankyou: 'terima kasih', terimakasih: 'terima kasih',
+  oke: 'oke', ok: 'oke', okei: 'oke', okai: 'oke', okay: 'oke',
+  paham: 'paham', ngerti: 'paham', ngarti: 'paham', mengerti: 'paham',
+  // Pamitan & penutup
+  gd: 'tidak ada', gada: 'tidak ada', gaada: 'tidak ada',
+  cukup: 'sudah', segitu: 'sudah',
+
   sih: '', deh: '', dong: '', nih: '', tuh: '', loh: '',
   lah: '', yah: '', yaa: '', yaaa: '', duh: '', aduh: '',
   emang: 'memang', emg: 'memang',
@@ -177,6 +187,15 @@ function stem(kata) {
 }
 
 /**
+ * Normalisasi pengulangan huruf berlebih:
+ * "makasihh" -> "makasih", "okeeii" -> "okei", "yaaaa" -> "ya"
+ * Huruf yang diulang lebih dari 2x dipotong jadi 1x.
+ */
+function normalRepeat(teks) {
+  return teks.replace(/(.)\1+/g, '$1');
+}
+
+/**
  * Preprocessing lengkap satu teks:
  * 1. Lowercase & hapus tanda baca
  * 2. Tokenisasi
@@ -190,7 +209,8 @@ function preprocess(teks) {
     .toLowerCase()
     .replace(/[^\w\s]/g, ' ')
     .split(/\s+/)
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(normalRepeat);
 
   const hasil = [];
   for (const token of tokens) {
@@ -546,6 +566,29 @@ const FAQ = [
     ],
     jawaban:
       'Halo! Aku Katt. Tanya apa aja soal cara pakai web ini, aku siap bantu.',
+  },
+  {
+    pertanyaan: [
+      'tidak ada pertanyaan lagi',
+      'tidak ada lagi',
+      'sudah tidak ada',
+      'cukup segitu',
+      'oke sudah cukup',
+      'sudah paham',
+      'tidak ada yang ditanyakan',
+      'gada pertanyaan lagi',
+      'gaada lagi',
+      'udah cukup',
+      'segitu dulu',
+      'oke deh',
+      'oke sudah',
+      'sampai sini dulu',
+      'bye',
+      'dadah',
+      'pamit dulu',
+    ],
+    jawaban:
+      'Oke, kalau ada pertanyaan lain jangan ragu tanya lagi ya. Semoga membantu!',
   },
   {
     pertanyaan: [
