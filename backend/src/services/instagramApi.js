@@ -425,6 +425,28 @@ async function getContainerStatus(creationId) {
 }
 
 /**
+ * Baca kuota publish 24 jam terakhir. Dipakai sebelum membuat container supaya
+ * penolakan kuota tidak muncul sebagai error aneh setelah container dibuat.
+ *
+ * @returns {Promise<{quotaUsage: number, quotaTotal: number}>}
+ */
+async function getContentPublishingLimit() {
+  const { token, igUserId } = kredensial();
+
+  const body = await call(
+    `${igUserId}/content_publishing_limit`,
+    { fields: 'quota_usage,config' },
+    'GET',
+    token
+  );
+  const data = body?.data?.[0] || {};
+  return {
+    quotaUsage: Number(data.quota_usage),
+    quotaTotal: Number(data.config?.quota_total),
+  };
+}
+
+/**
  * Apakah kredensial sudah terisi. Dipakai health check tanpa melempar error.
  *
  * @returns {boolean}
@@ -442,6 +464,7 @@ module.exports = {
   createCarouselContainer,
   publishContainer,
   getContainerStatus,
+  getContentPublishingLimit,
   isConfigured,
   VERSION,
   BATAS_CAPTION,

@@ -69,7 +69,7 @@ router.post('/:token', async (req, res) => {
     let status = 500;
     if (err.kode === 'BELUM_KONFIRMASI') status = 503;
     else if (err.kode === 'NOT_FOUND') status = 404;
-    else if (['SUDAH_TAYANG', 'SEDANG_PROSES', 'BUKAN_APPROVED'].includes(err.kode)) status = 409;
+    else if (['SUDAH_TAYANG', 'SEDANG_PROSES', 'BUKAN_APPROVED', 'KUOTA_HABIS'].includes(err.kode)) status = 409;
     else if (['INPUT_SALAH', 'KARTU_HILANG', 'TOKEN_SALAH'].includes(err.kode)) status = 400;
     else if (err instanceof igApi.InstagramApiError) status = 502;
 

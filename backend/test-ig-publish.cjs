@@ -54,8 +54,16 @@ const fsStub = {
 
 const igCalls = [];
 let jebakan = null;
+let kuotaJebakan = null;
 
 const igStub = {
+  getContentPublishingLimit: async () => {
+    igCalls.push({ fn: 'getContentPublishingLimit' });
+    if (kuotaJebakan === 'api') throw new Error('kuota tidak bisa dicek');
+    return kuotaJebakan === 'penuh'
+      ? { quotaUsage: 50, quotaTotal: 50 }
+      : { quotaUsage: 5, quotaTotal: 50 };
+  },
   createImageContainer: async (args) => {
     igCalls.push({ fn: 'createImageContainer', args });
     if (jebakan === 'container') throw new Error('container ditolak Instagram');
@@ -131,6 +139,7 @@ function reset() {
   updateManyCount = 1;
   findUniqueThrows = false;
   jebakan = null;
+  kuotaJebakan = null;
   baris = { id: 'M1', igStatus: null, igMediaId: null, igPermalink: null, status: 'APPROVED' };
   process.env.IG_PUBLIC_BASE_URL = 'https://menfs.onrender.com';
 }
@@ -213,14 +222,33 @@ async function main() {
   e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
   check('ditolak walau permalink kosong', e !== null && e.kode === 'SUDAH_TAYANG');
 
-  // ─── 4. Klaim gagal: ada proses lain yang lebih dulu ───────────────────────
+  // ─── 4. Kuota publish habis ditolak sebelum klaim ──────────────────────────
+  console.log('\n== guard: kuota habis ==');
+  reset();
+  kuotaJebakan = 'penuh';
+  e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
+  check('ditolak', e !== null && e.kode === 'KUOTA_HABIS', e?.kode);
+  check('pesan menyebut kuota habis', /[Kk]uota/.test(e?.message || ''), e?.message);
+  check('tidak ada container/publish dipanggil',
+    !igCalls.some((c) => c.fn !== 'getContentPublishingLimit'));
+  check('tidak ada file ditulis', fileTertulis.length === 0);
+  check('menfes tidak diklaim', prismaCalls.every((c) => c.op !== 'updateMany'));
+
+  // Kalau endpoint kuota gagal, jangan halang publish: Instagram tetap yang
+  // memutuskan, dan error jaringan tidak boleh berubah jadi kuota habis.
+  reset();
+  kuotaJebakan = 'api';
+  await igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] });
+  check('cek kuota gagal tidak menghalangi publish', jumlahPublish() === 1);
+
+  // ─── 5. Klaim gagal: ada proses lain yang lebih dulu ───────────────────────
   console.log('\n== guard: klaim gagal ==');
   reset();
   updateManyCount = 0;
   baris = { id: 'M1', igStatus: 'PENDING', igMediaId: null, igPermalink: null, status: 'APPROVED' };
   e = await grab(() => igPublish.terbitkan({ menfesId: 'M1', buffers: [{ buffer: JPEG, mimeType: 'image/jpeg' }] }));
   check('ditolak', e !== null && e.kode === 'SEDANG_PROSES', e?.kode);
-  check('Instagram tidak dipanggil', igCalls.length === 0);
+  check('Instagram tidak dipanggil', !igCalls.some((c) => c.fn !== 'getContentPublishingLimit'));
 
   // ─── 5. Uji konkurensi: dua panggilan paralel, satu publish ───────────────
   console.log('\n== konkurensi ==');

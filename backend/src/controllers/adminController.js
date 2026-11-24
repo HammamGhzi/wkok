@@ -490,7 +490,7 @@ async function postMenfesToInstagram(req, res) {
     if (err.kode === 'INPUT_SALAH') {
       return res.status(400).json({ error: err.message });
     }
-    if (err.kode === 'SUDAH_TAYANG' || err.kode === 'SEDANG_PROSES') {
+    if (['SUDAH_TAYANG', 'SEDANG_PROSES', 'KUOTA_HABIS'].includes(err.kode)) {
       return res.status(409).json({ error: err.message });
     }
     if (err.kode === 'NOT_FOUND') {

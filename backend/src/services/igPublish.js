@@ -297,6 +297,25 @@ async function terbitkan({ menfesId, buffers, caption }) {
     throw e;
   }
 
+  // Kuota dicek SEBELUM klaim: kalau penuh, menfes tidak berubah jadi PENDING
+  // dan tidak ada container yang dibuat hanya untuk ditolak saat publish.
+  // Endpoint kuota bukan syarat publish — kalau gagal dibaca, Instagram tetap
+  // yang memutuskan seperti sebelum pengecekan ini ada.
+  let kuota = null;
+  try {
+    kuota = await ig.getContentPublishingLimit();
+  } catch (err) {
+    console.warn('Cek kuota IG gagal:', err.message);
+  }
+  if (kuota && kuota.quotaTotal > 0 && kuota.quotaUsage >= kuota.quotaTotal) {
+    const e = new Error(
+      `Kuota publish Instagram habis (${kuota.quotaUsage}/${kuota.quotaTotal} dalam 24 jam). ` +
+        'Coba lagi setelah kuota tersedia.'
+    );
+    e.kode = 'KUOTA_HABIS';
+    throw e;
+  }
+
   const klaim = await klaimKerja(menfesId);
   if (!klaim.diklaim) {
     const e = new Error(
