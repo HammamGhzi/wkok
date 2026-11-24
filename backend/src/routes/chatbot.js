@@ -8,7 +8,7 @@ const router = express.Router();
  * Body: { pertanyaan: string }
  * Response: { jawaban: string }
  */
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { pertanyaan } = req.body || {};
 
   if (!pertanyaan || typeof pertanyaan !== 'string') {
@@ -23,8 +23,13 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Pertanyaan maksimal 300 karakter.' });
   }
 
-  const { jawaban } = cariJawaban(trimmed);
-  res.json({ jawaban });
+  try {
+    const { jawaban } = await cariJawaban(trimmed);
+    res.json({ jawaban });
+  } catch (err) {
+    console.error('Chatbot error:', err.message);
+    res.status(500).json({ error: 'Gagal memproses pertanyaan.' });
+  }
 });
 
 module.exports = router;

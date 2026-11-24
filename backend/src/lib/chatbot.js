@@ -1,9 +1,13 @@
 /**
+/**
  * Chatbot FAQ Harkat Nekat
  * Pakai TF-IDF + cosine similarity dengan preprocessing:
  * - Strip sapaan (min, kak, bang, dll)
  * - Normalisasi kata informal -> formal
  * - Stemming sederhana awalan/akhiran bahasa Indonesia
+ *
+ * Kalau skor TF-IDF rendah (pertanyaan tidak ada di FAQ):
+ * fallback ke Groq → Gemini → OpenRouter → balik lokal
  */
 
 // ── Preprocessing ─────────────────────────────────────────────────────────────
@@ -673,10 +677,143 @@ function cosine(a, b) {
 // Bangun indeks sekali saat modul di-load
 const { vektor, df, N } = bangunIndeks(FAQ);
 
+// ── AI Fallback ───────────────────────────────────────────────────────────────
+
+const SYSTEM_PROMPT = `Kamu adalah Katt, asisten chatbot web menfess Harkat Nekat.
+Tugasmu hanya menjawab pertanyaan seputar web menfess Harkat Nekat.
+Jawab dengan bahasa Indonesia yang ramah, singkat, dan to the point.
+Jangan jawab pertanyaan di luar konteks web menfess ini.
+Kalau pertanyaan tidak relevan, arahkan user untuk tanya soal web saja.`;
+
+// Daftar provider beserta model fallback-nya masing-masing
+const AI_PROVIDERS = [
+  {
+    nama: 'Groq',
+    models: [
+      'qwen/qwen3.8-27b',
+      'openai/gpt-oss-20b',
+      'openai/gpt-oss-120b',
+    ],
+    async kirim(model, pertanyaan) {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: pertanyaan },
+          ],
+          max_tokens: 300,
+          temperature: 0.5,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.status === 429 || res.status === 503) throw new Error('limit');
+      if (!res.ok) throw new Error(`groq_error_${res.status}`);
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content?.trim();
+    },
+  },
+  {
+    nama: 'Gemini',
+    models: [
+      'gemini-2.5-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-flash-lite-latest',
+    ],
+    async kirim(model, pertanyaan) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ parts: [{ text: pertanyaan }] }],
+          generationConfig: { maxOutputTokens: 300, temperature: 0.5 },
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.status === 429 || res.status === 503) throw new Error('limit');
+      if (!res.ok) throw new Error(`gemini_error_${res.status}`);
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    },
+  },
+  {
+    nama: 'OpenRouter',
+    models: [
+      'google/gemma-4-27b-it:free',
+      'google/gemma-4-26b-a4b-it:free',
+      'nvidia/nemotron-3-ultra-550b-a55b:free',
+      'liquid/lfm-3-1.7b:free',
+    ],
+    async kirim(model, pertanyaan) {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://harkatnekat.vercel.app',
+          'X-Title': 'Harkat Nekat Chatbot',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: pertanyaan },
+          ],
+          max_tokens: 300,
+          temperature: 0.5,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      // OpenRouter kadang balas 200 tapi isinya error
+      if (data.error) {
+        const code = data.error.code || data.error.metadata?.provider_error_code || '';
+        if (String(code) === '429' || String(code).includes('rate_limit')) throw new Error('limit');
+        throw new Error(`openrouter_error_${code}`);
+      }
+      if (!res.ok) throw new Error(`openrouter_error_${res.status}`);
+      return data.choices?.[0]?.message?.content?.trim();
+    },
+  },
+];
+
 /**
- * Cari jawaban paling relevan untuk pertanyaan user.
+ * Coba semua provider dan model secara berurutan.
+ * Kalau semua gagal/limit, return null.
  */
-function cariJawaban(pertanyaan) {
+async function tanyaAI(pertanyaan) {
+  for (const provider of AI_PROVIDERS) {
+    for (const model of provider.models) {
+      try {
+        const jawaban = await provider.kirim(model, pertanyaan);
+        if (jawaban) {
+          console.log(`[Chatbot] AI: ${provider.nama}/${model}`);
+          return jawaban;
+        }
+      } catch (err) {
+        console.log(`[Chatbot] ${provider.nama}/${model} skip: ${err.message}`);
+        // Lanjut ke model/provider berikutnya
+      }
+    }
+  }
+  return null;
+}
+
+// Threshold TF-IDF: di atas ini jawab dari lokal, di bawah ini coba AI
+const THRESHOLD_LOKAL = 0.25;
+const THRESHOLD_FALLBACK = 0.05;
+
+/**
+ * Cari jawaban: lokal dulu, fallback AI kalau skor rendah.
+ */
+async function cariJawaban(pertanyaan) {
   const qVec = vektorQuery(pertanyaan, df, N);
   let skorTerbaik = -1;
   let idxTerbaik = -1;
@@ -689,36 +826,40 @@ function cariJawaban(pertanyaan) {
     }
   }
 
-  // Kalau token query kosong setelah preprocessing, cek apakah input asli
-  // mengandung niat bertanya ("mau tanya", "boleh tanya", dll) atau cuma sapaan.
+  // Kalau token query kosong setelah preprocessing
   const tokenQuery = preprocess(pertanyaan);
-
-  // Cek niat tanya dari token mentah (sebelum preprocessing membuang semuanya)
   const tokenMentah = pertanyaan.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean);
   const adaNiatTanya = tokenMentah.some((t) => NIAT_TANYA.has(t));
 
-  // Kalau setelah preprocessing tidak ada token substantif, balas sesuai konteks
   if (tokenQuery.length === 0 || (tokenQuery.length <= 1 && NIAT_TANYA.has(tokenQuery[0]))) {
     return {
-      jawaban: adaNiatTanya
-        ? 'Iya boleh, mau tanya apa?'
-        : 'Halo! Ada yang bisa aku bantu?',
-      skor: 0,
+      jawaban: adaNiatTanya ? 'Iya boleh, mau tanya apa?' : 'Halo! Ada yang bisa aku bantu?',
+      sumber: 'lokal',
     };
   }
 
-  const THRESHOLD = 0.05;
-  if (skorTerbaik < THRESHOLD || idxTerbaik === -1) {
+  // Skor tinggi → jawab dari lokal langsung
+  if (skorTerbaik >= THRESHOLD_LOKAL && idxTerbaik !== -1) {
     return {
-      jawaban:
-        'Hmm, aku kurang paham pertanyaanmu. Coba tanya dengan kata lain, atau hubungi admin lewat Instagram kami ya.',
-      skor: skorTerbaik,
+      jawaban: FAQ[idxTerbaik].jawaban,
+      sumber: 'lokal',
     };
+  }
+
+  // Skor rendah → coba AI
+  const jawabanAI = await tanyaAI(pertanyaan);
+  if (jawabanAI) {
+    return { jawaban: jawabanAI, sumber: 'ai' };
+  }
+
+  // Semua AI gagal → balik ke lokal (jawaban terbaik meski skornya rendah)
+  if (skorTerbaik >= THRESHOLD_FALLBACK && idxTerbaik !== -1) {
+    return { jawaban: FAQ[idxTerbaik].jawaban, sumber: 'lokal_fallback' };
   }
 
   return {
-    jawaban: FAQ[idxTerbaik].jawaban,
-    skor: skorTerbaik,
+    jawaban: 'Hmm, aku kurang paham pertanyaanmu. Coba tanya dengan kata lain, atau hubungi admin lewat Instagram kami ya.',
+    sumber: 'tidak_tahu',
   };
 }
 
