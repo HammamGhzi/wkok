@@ -4,7 +4,7 @@ import maskot from '../assets/chatbot-mascot.png';
 
 const PESAN_SAMBUTAN = {
   dari: 'bot',
-  teks: 'Halo! Aku asisten Harkat Nekat. Ada yang bisa aku bantu soal cara pakai web ini?',
+  teks: 'Halo! Aku Katt. Ada yang bisa aku bantu soal cara pakai web ini?',
 };
 
 const SARAN_PERTANYAAN = [
@@ -107,7 +107,7 @@ export default function ChatbotWidget() {
                         bg-brand-700 dark:bg-brand-800">
           <img src={maskot} alt="" className="w-9 h-9 object-contain rounded-full" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white leading-tight">Asisten Harkat Nekat</p>
+            <p className="text-sm font-semibold text-white leading-tight">Katt</p>
             <p className="text-xs text-brand-200">FAQ · Cara pakai web</p>
           </div>
           <button

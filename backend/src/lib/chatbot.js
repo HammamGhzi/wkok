@@ -521,7 +521,7 @@ const FAQ = [
       'permisi mau tanya',
     ],
     jawaban:
-      'Halo! Aku asisten Harkat Nekat. Tanya apa aja soal cara pakai web ini, aku siap bantu.',
+      'Halo! Aku Katt. Tanya apa aja soal cara pakai web ini, aku siap bantu.',
   },
   {
     pertanyaan: [
