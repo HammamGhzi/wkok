@@ -30,9 +30,10 @@ export default function ChatbotWidget() {
     }
   }, [pesan, buka]);
 
-  // Fokus input saat dibuka
+  // Fokus input hanya di desktop, bukan mobile (supaya keyboard HP tidak
+  // langsung muncul saat overlay dibuka)
   useEffect(() => {
-    if (buka) {
+    if (buka && window.matchMedia('(hover: hover)').matches) {
       setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, [buka]);
