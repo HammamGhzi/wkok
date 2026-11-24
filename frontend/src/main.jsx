@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import './index.css';
 import IntroLoader from './components/IntroLoader';
+import ChatbotWidget from './components/ChatbotWidget';
 
 import HomePage from './pages/HomePage';
 import AdminLoginPage from './pages/AdminLoginPage';
@@ -58,6 +59,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <App />
       {!window.location.pathname.startsWith('/4613a76adb4fb2dc') && <IntroLoader />}
+      {!window.location.pathname.startsWith('/4613a76adb4fb2dc') && <ChatbotWidget />}
     </BrowserRouter>
   </React.StrictMode>
 );

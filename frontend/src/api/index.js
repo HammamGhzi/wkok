@@ -66,6 +66,12 @@ export const siteAPI = {
     api.get('/site/status'),
 };
 
+// ─── Chatbot FAQ ──────────────────────────────────────────────────────────
+export const chatbotAPI = {
+  tanya: (pertanyaan) =>
+    api.post('/chatbot', { pertanyaan }),
+};
+
 // ─── Admin ────────────────────────────────────────────────────────────────
 export const adminAPI = {
   getStats: () =>
