@@ -486,6 +486,30 @@ const FAQ = [
   },
   {
     pertanyaan: [
+      'aturan ngirim menfes',
+      'aturan kirim menfes',
+      'ketentuan menfes',
+      'syarat menfes',
+      'boleh kirim apa saja',
+      'konten yang dilarang',
+      'menfes yang tidak boleh',
+      'aturan menfess',
+      'ketentuan kirim',
+      'syarat kirim menfes',
+      'apa yang boleh dikirim',
+      'apa yang tidak boleh dikirim',
+      'menfes yang diterima',
+      'menfes yang ditolak apa',
+      'rules menfes',
+      'rule kirim menfes',
+      'panduan kirim menfes',
+      'kebijakan menfes',
+    ],
+    jawaban:
+      'Aturan umum menfes:\n1. Dilarang menyebut nama/identitas orang lain secara spesifik dengan niat menyudutkan\n2. Dilarang konten berbau SARA, pornografi, atau kekerasan\n3. Dilarang spam atau konten tidak relevan\n4. Pesan harus minimal 5 karakter dan maksimal 500 karakter\n\nMenfes yang melanggar aturan akan ditolak admin.',
+  },
+  {
+    pertanyaan: [
       'menfes itu apa',
       'apa itu menfes',
       'apa itu menfess',
