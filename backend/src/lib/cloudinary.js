@@ -38,7 +38,7 @@ const FRAME_VIDEO = [
   'c_pad,w_960,h_1110,b_rgb:F6EFDD', // video masuk area media, sisa letterbox krem
   'c_pad,w_1080,h_1110,b_rgb:F6EFDD', // margin 60 px kiri/kanan, tanpa upscale
   'c_pad,w_1080,h_1350,b_rgb:F6EFDD,g_north,y_60', // strip 180 px hanya di bawah
-  'l_text:Arial_44_bold:@harkatnekatt,co_rgb:7A1F2B,g_south,y_50',
+  'l_text:Arial_44_bold:@harkatfess,co_rgb:7A1F2B,g_south,y_50',
   'f_mp4',
 ].join('/');
 

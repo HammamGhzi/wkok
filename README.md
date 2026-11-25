@@ -2,7 +2,7 @@
 
 Web menfes anonim buat komunitas Harkat Nekatt. User nulis pesan, pilih template
 kartu, tambah musik/foto (opsional). Admin review di dashboard, lalu terbitkan ke
-Instagram @harkatnekatt — pesan panjang otomatis jadi beberapa kartu (carousel).
+Instagram @harkatfess — pesan panjang otomatis jadi beberapa kartu (carousel).
 
 ## Struktur
 
@@ -54,7 +54,7 @@ Kartu dirender dari PNG template (4:5, 1080×1350) dengan area teks ber-coordina
 `bounds` di `frontend/src/config/templates.js`:
 
 - `template4` (fess), `template5` (tuyul), `template6` (kelas) — variant lite,
-  handle `@harkatnekatt` di tepi atas panel.
+  handle `@harkatfess` di tepi atas panel.
 - PNG sumber ada di `frontend/public/template/`, hasil render dari project
   `templatemaker/` di root repo (Canvas 2D, bukan image editor).
 

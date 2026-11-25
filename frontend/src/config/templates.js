@@ -17,7 +17,7 @@ const CACHE_KEY = Date.now();
 
 export const TEMPLATES = [
   // ── Template lite (4:5, 1080x1350) ──────────────────────────────────────
-  // PNG sudah berisi handle @harkatnekatt kecil di tepi ATAS panel krem;
+  // PNG sudah berisi handle @harkatfess kecil di tepi ATAS panel krem;
   // panel bawah kosong = zona teks pesan. bounds['4:5'] adalah panel krem
   // MINUS pad (zona mulai DI BAWAH handle baked, jadi handle gak ketimpa).
   {

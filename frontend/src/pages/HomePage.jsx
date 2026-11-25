@@ -49,7 +49,7 @@ function bacaDurasiVideo(file) {
 // kamera) hilang karena canvas tidak pernah menyalin metadata; foto masuk
 // bingkai polaroid krem ala HarkatNekatt (canvas portrait 4:5 tetap
 // 1080×1350, foto yang menyesuaikan — contain, tidak pernah dipotong);
-// handle @harkatnekatt di strip bawah; dan hasil JPEG-nya yang dikirim —
+// handle @harkatfess di strip bawah; dan hasil JPEG-nya yang dikirim —
 // server cukup menyimpan apa adanya tanpa library pemrosesan gambar sama
 // sekali.
 //
@@ -97,7 +97,7 @@ async function bingkaiFoto(file) {
     ctx.font = "bold 44px 'DM Sans', system-ui, sans-serif";
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('@harkatnekatt', canvas.width / 2, areaY + areaH + FOTO_PADDING.bawah / 2);
+    ctx.fillText('@harkatfess', canvas.width / 2, areaY + areaH + FOTO_PADDING.bawah / 2);
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
     if (!blob) throw new Error('gagal mengubah gambar');
@@ -830,7 +830,7 @@ export default function HomePage() {
                         className="w-full max-h-64 object-contain rounded"
                       />
                       <span className="absolute inset-x-0 bottom-1.5 text-center text-[11px] font-bold text-[#7A1F2B]">
-                        @harkatnekatt
+                        @harkatfess
                       </span>
                     </div>
                     <div className="p-2 bg-parchment-100 dark:bg-ink-800">

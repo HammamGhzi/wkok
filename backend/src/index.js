@@ -56,8 +56,8 @@ const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
   .filter(Boolean);
 
 // Pastikan production URL selalu ada
-if (!allowedOrigins.includes('https://harkatnekat.vercel.app')) {
-  allowedOrigins.push('https://harkatnekat.vercel.app');
+if (!allowedOrigins.includes('https://harkatfess.vercel.app')) {
+  allowedOrigins.push('https://harkatfess.vercel.app');
 }
 
 // Form POST di halaman konfirmasi link WA dikirim dari domain BACKEND sendiri.
