@@ -11,8 +11,8 @@
 | Service | URL |
 |---------|-----|
 | **Backend (Render)** | `https://harkatnekatt.onrender.com` |
-| **Frontend (Vercel)** | `https://uhnfess.vercel.app` |
-| **Admin Dashboard** | `https://uhnfess.vercel.app/4613a76adb4fb2dc` |
+| **Frontend (Vercel)** | `https://harkatfess.vercel.app` |
+| **Admin Dashboard** | `https://harkatfess.vercel.app/4613a76adb4fb2dc` |
 
 ---
 
@@ -21,8 +21,8 @@
 | Resource | URL |
 |----------|-----|
 | **Backend** | https://harkatnekatt.onrender.com |
-| **Frontend** | https://uhnfess.vercel.app |
-| **Admin Dashboard** | https://uhnfess.vercel.app/4613a76adb4fb2dc |
+| **Frontend** | https://harkatfess.vercel.app |
+| **Admin Dashboard** | https://harkatfess.vercel.app/4613a76adb4fb2dc |
 | **Render Dashboard** | https://dashboard.render.com |
 | **Vercel Dashboard** | https://vercel.com/dashboard |
 | **Supabase Dashboard** | https://supabase.com/dashboard |
@@ -122,7 +122,7 @@ curl -X POST https://harkatnekatt.onrender.com/api/admin/menfes/test/post
 - Login dengan GitHub account
 
 ### 3.2 Check Project Settings
-Project: `uhnfess` (https://uhnfess.vercel.app)
+Project: `harkatfess` (https://harkatfess.vercel.app)
 
 **Environment Variables**:
 ```env
@@ -145,14 +145,14 @@ VITE_CHATBOT_API_URL=https://menfs.onrender.com
 4. Tunggu build selesai
 
 ### 3.4 Verify Frontend
-Buka https://uhnfess.vercel.app dan test:
+Buka https://harkatfess.vercel.app dan test:
 
 1. **Homepage**:
    - [ ] Halaman load正常
    - [ ] Disclaimer anonim terlihat: "100% aman & anonim untuk Instagram"
    - [ ] Template cards render
 
-2. **Admin Dashboard** (https://uhnfess.vercel.app/4613a76adb4fb2dc):
+2. **Admin Dashboard** (https://harkatfess.vercel.app/4613a76adb4fb2dc):
    - [ ] Login berhasil (admin/admin123)
    - [ ] Stats cards render (Total, Menunggu, Disetujui, Ditolak)
    - [ ] Menfess list load
@@ -197,7 +197,7 @@ curl https://harkatnekatt.onrender.com/health
 ### 5.1 Test Publish Flow
 ⚠️ **Only test jika IG token valid dan lu siap post ke Instagram!**
 
-1. Login ke https://uhnfess.vercel.app/4613a76adb4fb2dc
+1. Login ke https://harkatfess.vercel.app/4613a76adb4fb2dc
 2. Approve satu menfess (atau pakai yang sudah APPROVED)
 3. Klik "Export IG"
 4. Tulis caption (max 2200 chars)

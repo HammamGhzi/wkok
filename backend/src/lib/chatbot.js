@@ -757,7 +757,7 @@ const AI_PROVIDERS = [
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://uhnfess.vercel.app',
+          'HTTP-Referer': 'https://harkatfess.vercel.app',
           'X-Title': 'Harkat Nekat Chatbot',
         },
         body: JSON.stringify({
