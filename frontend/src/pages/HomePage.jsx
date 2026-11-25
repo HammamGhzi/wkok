@@ -159,7 +159,7 @@ function FooterBawah() {
       <div className="w-16 h-0.5 bg-brand-700 mx-auto mb-4 rounded-full" />
       <p className="text-xs font-mono tracking-widest text-ink-500 dark:text-ink-200">
         © 2026{' '}
-        <span className="font-semibold text-brand-400">HARKAT NEKATT</span>
+        <span className="font-semibold text-brand-400">HARKATFESS</span>
         {' · EST. 2026'}
       </p>
     </footer>
