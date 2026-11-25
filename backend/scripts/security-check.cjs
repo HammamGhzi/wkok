@@ -242,9 +242,9 @@ const check = (name, secure, extra = '') => {
   const rEvil = await fetch(`${base}/api/menfes`, { headers: { Origin: 'https://evil.example.com' } });
   check('Origin asing tidak dapat header CORS', !rEvil.headers.get('access-control-allow-origin'),
     `HTTP ${rEvil.status}`);
-  const rGood = await fetch(`${base}/api/menfes`, { headers: { Origin: 'https://harkatnekat.vercel.app' } });
+  const rGood = await fetch(`${base}/api/menfes`, { headers: { Origin: 'https://uhnfess.vercel.app' } });
   check('Origin resmi tetap diizinkan',
-    (rGood.headers.get('access-control-allow-origin') || '').includes('harkatnekat.vercel.app'));
+    (rGood.headers.get('access-control-allow-origin') || '').includes('uhnfess.vercel.app'));
 
   // ═══ 4. Admin route tetap tertutup ═══════════════════════════════════
   console.log('\n── 4. Autentikasi admin ──');

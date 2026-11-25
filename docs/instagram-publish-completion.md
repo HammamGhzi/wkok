@@ -74,7 +74,7 @@
   - Set environment variables in Render dashboard
   - Verify `/uploads/ig` static route works
   - Test `POST /api/admin/menfes/:id/post` endpoint
-- [ ] **Frontend → Vercel** (https://harkatnekat.vercel.app)
+- [ ] **Frontend → Vercel** (https://uhnfess.vercel.app)
   - Deploy latest code from `main` branch
   - Verify API base URL points to Render backend
   - Test ExportModal in production
