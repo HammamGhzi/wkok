@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { TEMPLATES, getTemplateById, parseTemplateFromMenfes } from '../config/templates';
+import { TEMPLATES, getTemplateById, getDefaultMessage, parseTemplateFromMenfes } from '../config/templates';
 import { renderMenfessToCanvas, CANVAS_SIZE, hitungKartu } from '../utils/drawMenfessCanvas';
 import { adminAPI, urlAset } from '../api';
 import usePreviewLagu from '../hooks/usePreviewLagu';
@@ -61,9 +61,10 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
 
   // Posisi teks menfes — dipatok ke titik tengah blok, bukan kiri-atas,
   // supaya blok multi-baris tetap stabil dan rotasi berputar di sekitar pusat.
-  const [msgX, setMsgX] = useState(currentTemplate.defaultMessage.posX);
-  const [msgY, setMsgY] = useState(currentTemplate.defaultMessage.posY);
-  const [msgRotate, setMsgRotate] = useState(currentTemplate.defaultMessage.rotate);
+  const defaultMsg = getDefaultMessage(currentTemplate, ratio);
+  const [msgX, setMsgX] = useState(defaultMsg.posX);
+  const [msgY, setMsgY] = useState(defaultMsg.posY);
+  const [msgRotate, setMsgRotate] = useState(defaultMsg.rotate);
 
   // Navigasi multicard di preview live: kartu aktif + baris per kartu.
   // Chunk dihitung sendiri di efek preview (bukan dipinjam dari handlePost)
@@ -111,16 +112,17 @@ export default function ExportModal({ menfes, onClose, onPosted }) {
   function handleSelectTemplate(tmplId) {
     const tmpl = getTemplateById(tmplId);
     setSelectedTemplateId(tmplId);
-    setMsgX(tmpl.defaultMessage.posX);
-    setMsgY(tmpl.defaultMessage.posY);
-    setMsgRotate(tmpl.defaultMessage.rotate);
+    const tmplMsg = getDefaultMessage(tmpl, tmpl.defaultRatio);
+    setMsgX(tmplMsg.posX);
+    setMsgY(tmplMsg.posY);
+    setMsgRotate(tmplMsg.rotate);
   }
 
   // Reset slider ke default template saat ini
   function handleResetPositions() {
-    setMsgX(currentTemplate.defaultMessage.posX);
-    setMsgY(currentTemplate.defaultMessage.posY);
-    setMsgRotate(currentTemplate.defaultMessage.rotate);
+    setMsgX(defaultMsg.posX);
+    setMsgY(defaultMsg.posY);
+    setMsgRotate(defaultMsg.rotate);
     toast.success('Posisi direset ke default template.');
   }
 

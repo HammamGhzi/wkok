@@ -1,4 +1,5 @@
 import { chunkLines } from './splitLines.js';
+import { getDefaultMessage } from '../config/templates.js';
 
 export const CANVAS_SIZE = {
   '1:1': { w: 1080, h: 1080 },
@@ -167,9 +168,10 @@ export function renderMenfessToCanvas(canvas, {
 
   const ctx = canvas.getContext('2d');
   const actualFontSize = fontSize || template.defaultFontSize || 36;
-  const actualMsgX = msgX !== null && msgX !== undefined ? msgX : template.defaultMessage.posX;
-  const actualMsgY = msgY !== null && msgY !== undefined ? msgY : template.defaultMessage.posY;
-  const actualMsgRotate = msgRotate !== null && msgRotate !== undefined ? msgRotate : template.defaultMessage.rotate;
+  const defaultMsg = getDefaultMessage(template, actualRatio);
+  const actualMsgX = msgX !== null && msgX !== undefined ? msgX : defaultMsg.posX;
+  const actualMsgY = msgY !== null && msgY !== undefined ? msgY : defaultMsg.posY;
+  const actualMsgRotate = msgRotate !== null && msgRotate !== undefined ? msgRotate : defaultMsg.rotate;
 
   // Render async: caller harus menunggu promise ini sebelum mengunci canvas
   // jadi blob. Kalau tidak, canvas masih transparan dan JPEG keluar hitam.

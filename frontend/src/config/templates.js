@@ -68,21 +68,21 @@ export const TEMPLATES = [
     textColor: '#7a1f2b',
     fontFamily: "'DM Sans', sans-serif",
     fontWeight: '600',
-    // Zona 770..987px (217px): 5 baris x 42px = 210px masih muat.
+    // Zona 743..954px (211px): 5 baris x 42px = 210px masih muat.
     defaultFontSize: 28,
     lineHeightMultiplier: 1.5,
     maxLines: 5,
     bounds: {
-      // textWindow(BUS) di drawTuyul.js: x 410..908.15, y 713.3..1001
-      // (BUS {x:40,y:640,w:1000,h:560}). Handle baked (bold 26px, baseline
-      // y=753.7) berakhir ~y=759, jadi zona mulai y=770.
-      '4:5': { x: 0.394, y: 0.57, w: 0.432, h: 0.161, padX: 0.04, padY: 0.04 },
+      // Panel krem screenshot baru: x 413..911, y 685..970. Handle baked
+      // (bold 26px, bbox y 707..738) berakhir ~y=738, jadi zona mulai y=743.
+      '4:5': { x: 0.382, y: 0.55, w: 0.462, h: 0.156, padX: 0.04, padY: 0.04 },
       // 1:1: crop aspect-fill (sy=135px), y dikurangi 135 lalu / 1080.
-      '1:1': { x: 0.394, y: 0.588, w: 0.432, h: 0.201, padX: 0.04, padY: 0.04 },
+      '1:1': { x: 0.382, y: 0.563, w: 0.462, h: 0.194, padX: 0.04, padY: 0.04 },
     },
     defaultMessage: {
-      posX: 61, // pusat zona x 426..892
-      posY: 65.1, // pusat zona y 770..987
+      posX: 61.3, // pusat panel x=662 (sama dengan handle baked)
+      posY: 62.8, // pusat zona y 743..954
+      '1:1': { posY: 66.0 }, // crop sy=135: pusat zona y 608..819
       rotate: 0,
     },
   },
@@ -101,26 +101,32 @@ export const TEMPLATES = [
     textColor: '#7a1f2b',
     fontFamily: "'DM Sans', sans-serif",
     fontWeight: '600',
-    // Zona 385..730px (345px): 6 baris x 54px = 324px masih muat.
+    // Zona 308..632px (324px): 6 baris x 54px = 324px pas muat.
     defaultFontSize: 36,
     lineHeightMultiplier: 1.5,
     maxLines: 6,
     bounds: {
-      // Permukaan papan (BOARD {x:110,y:300,w:750,h:470, frame:20} di
-      // kelas.js): x 130..840, y 320..750. Handle baked (bold 36px,
-      // baseline y=360) berakhir ~y=368, jadi zona mulai y=385.
-      // Papan gak center di x=50% (110..860) -> posX ikut 44.9%.
-      '4:5': { x: 0.143, y: 0.285, w: 0.613, h: 0.256, padX: 0.04, padY: 0.04 },
+      // Papan krem screenshot baru: x 51..884, y 244..689. Handle baked
+      // (bold 36px, bbox y 257..296) berakhir ~y=296, jadi zona mulai y=308.
+      // Papan gak center di x=50% (51..884) -> posX ikut 43.3%.
+      '4:5': { x: 0.047, y: 0.228, w: 0.772, h: 0.24, padX: 0.04, padY: 0.04 },
       // 1:1: crop aspect-fill (sy=135px), y dikurangi 135 lalu / 1080.
-      '1:1': { x: 0.143, y: 0.231, w: 0.613, h: 0.319, padX: 0.04, padY: 0.04 },
+      '1:1': { x: 0.047, y: 0.16, w: 0.772, h: 0.3, padX: 0.04, padY: 0.04 },
     },
     defaultMessage: {
-      posX: 44.9, // pusat zona x 154..816
-      posY: 41.3, // pusat zona y 385..730
+      posX: 43.3, // pusat panel x=467.5 (sama dengan handle baked)
+      posY: 34.8, // pusat zona y 308..632
+      '1:1': { posY: 31.0 }, // crop sy=135: pusat zona y 173..497
       rotate: 0,
     },
   },
 ];
+
+export function getDefaultMessage(template, ratio) {
+  const base = template.defaultMessage;
+  const override = base[ratio || template.defaultRatio];
+  return override ? { ...base, ...override } : base;
+}
 
 export function getTemplateById(id) {
   return TEMPLATES.find((t) => t.id === id) || TEMPLATES[0];
