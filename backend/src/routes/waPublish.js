@@ -43,7 +43,7 @@ router.get('/:token', async (req, res) => {
 
   res.type('html').send(halaman('Post ke Instagram', `
     <h1>Post ke Instagram?</h1>
-    <p>Kartu hasil Export WA akan dipublish ke feed <strong>@harkatnekatt</strong>
+    <p>Kartu hasil Export WA akan dipublish ke feed <strong>@harkatfess</strong>
     dengan caption otomatis:</p>
     <pre style="white-space:pre-wrap;background:#f3f4f6;padding:1rem;border-radius:.5rem"
     >${escapeHtml(caption)}</pre>

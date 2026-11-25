@@ -130,7 +130,7 @@ export const adminAPI = {
       throw Object.assign(
         new Error(
           kehabisanWaktu
-            ? `Instagram tidak menjawab dalam ${timeoutMs / 1000} detik. Postingan mungkin sudah tayang — cek feed @harkatnekatt sebelum mencoba lagi.`
+            ? `Instagram tidak menjawab dalam ${timeoutMs / 1000} detik. Postingan mungkin sudah tayang — cek feed @harkatfess sebelum mencoba lagi.`
             : 'Tidak bisa menghubungi server. Cek koneksi internet.'
         ),
         { response: null }
