@@ -1,4 +1,4 @@
-import api, { BASE_URL, ambilToken, tangani401 } from './client';
+import api, { BASE_URL, CHATBOT_BASE_URL, ambilToken, tangani401 } from './client';
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 export const authAPI = {
@@ -69,7 +69,7 @@ export const siteAPI = {
 // ─── Chatbot FAQ ──────────────────────────────────────────────────────────
 export const chatbotAPI = {
   tanya: (pertanyaan) =>
-    api.post('/chatbot', { pertanyaan }),
+    api.post(`${CHATBOT_BASE_URL}/chatbot`, { pertanyaan }),
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────

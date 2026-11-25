@@ -1,18 +1,13 @@
 import axios from 'axios';
 
-// Kalau ada VITE_API_URL (production), pakai itu.
-// Kalau tidak ada (dev), fallback ke /api (Vite proxy).
-//
-// Slash di akhir VITE_API_URL harus dibuang lebih dulu. Nilai env di
-// Vercel gampang diketik berekor slash ("https://host.onrender.com/"),
-// lalu concat di bawah menghasilkan "...onrender.com//api". Backend tidak
-// menormalkan double slash, jadi route itu balas 404 dengan
-// {"error":"Route tidak ditemukan."} -- sementara header CORS tetap
-// terkirim dan health check tetap hijau, sehingga gejalanya mudah
-// disalahartikan sebagai "API hidup" padahal setiap request gagal.
-const API_ORIGIN = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
+import { ruteApi } from './origin.js';
 
-const BASE_URL = API_ORIGIN ? `${API_ORIGIN}/api` : '/api';
+// VITE_API_URL = backend utama (termasuk WA). VITE_CHATBOT_API_URL = server
+// FAQ. Kalau kosong, keduanya pakai /api (proxy Vite saat dev).
+const { BASE_URL, CHATBOT_BASE_URL } = ruteApi({
+  apiUrl: import.meta.env.VITE_API_URL,
+  chatbotUrl: import.meta.env.VITE_CHATBOT_API_URL,
+});
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -63,6 +58,6 @@ export function tangani401(status) {
   }
 }
 
-export { BASE_URL };
+export { BASE_URL, CHATBOT_BASE_URL };
 
 export default api;
