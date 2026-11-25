@@ -83,7 +83,7 @@ export default function ChatbotWidget() {
       >
         <img
           src={maskot}
-          alt="Asisten Harkat Nekat"
+          alt="Asisten Harkatfess"
           className="w-full h-full object-contain rounded-full"
         />
         {/* Badge notif kecil saat pertama kali */}

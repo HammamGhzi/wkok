@@ -1,16 +1,16 @@
+﻿/**
 /**
-/**
- * Chatbot FAQ Harkat Nekat
+ * Chatbot FAQ Harkatfess
  * Pakai TF-IDF + cosine similarity dengan preprocessing:
  * - Strip sapaan (min, kak, bang, dll)
  * - Normalisasi kata informal -> formal
  * - Stemming sederhana awalan/akhiran bahasa Indonesia
  *
  * Kalau skor TF-IDF rendah (pertanyaan tidak ada di FAQ):
- * fallback ke Groq → Gemini → OpenRouter → balik lokal
+ * fallback ke Groq â†’ Gemini â†’ OpenRouter â†’ balik lokal
  */
 
-// ── Preprocessing ─────────────────────────────────────────────────────────────
+// â”€â”€ Preprocessing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Kata yang terdeteksi sebagai niat bertanya (setelah sapaan dibuang)
 const NIAT_TANYA = new Set([
@@ -237,7 +237,7 @@ function preprocess(teks) {
   return hasil;
 }
 
-// ── Dataset FAQ ───────────────────────────────────────────────────────────────
+// â”€â”€ Dataset FAQ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const FAQ = [
   {
     pertanyaan: [
@@ -541,7 +541,7 @@ const FAQ = [
       'menfes artinya',
       'web ini untuk apa',
       'fungsi web ini',
-      'harkat nekat itu apa',
+      'Harkatfess itu apa',
       'ini web apa',
       'kegunaan web ini apa',
       'menfes buat apa',
@@ -612,7 +612,7 @@ const FAQ = [
   },
 ];
 
-// ── TF-IDF + Cosine Similarity ────────────────────────────────────────────────
+// â”€â”€ TF-IDF + Cosine Similarity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function hitungTF(tokens) {
   const tf = {};
@@ -677,10 +677,10 @@ function cosine(a, b) {
 // Bangun indeks sekali saat modul di-load
 const { vektor, df, N } = bangunIndeks(FAQ);
 
-// ── AI Fallback ───────────────────────────────────────────────────────────────
+// â”€â”€ AI Fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const SYSTEM_PROMPT = `Kamu adalah Katt, asisten chatbot web menfess Harkat Nekat.
-Tugasmu hanya menjawab pertanyaan seputar web menfess Harkat Nekat.
+const SYSTEM_PROMPT = `Kamu adalah Katt, asisten chatbot web menfess Harkatfess.
+Tugasmu hanya menjawab pertanyaan seputar web menfess Harkatfess.
 Jawab dengan bahasa Indonesia yang ramah, singkat, dan to the point.
 Jangan jawab pertanyaan di luar konteks web menfess ini.
 Kalau pertanyaan tidak relevan, arahkan user untuk tanya soal web saja.`;
@@ -757,8 +757,8 @@ const AI_PROVIDERS = [
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://harkatnekat.vercel.app',
-          'X-Title': 'Harkat Nekat Chatbot',
+          'HTTP-Referer': 'https://uhnfess.vercel.app',
+          'X-Title': 'Harkatfess Chatbot',
         },
         body: JSON.stringify({
           model,
@@ -838,7 +838,7 @@ async function cariJawaban(pertanyaan) {
     };
   }
 
-  // Skor tinggi → jawab dari lokal langsung
+  // Skor tinggi â†’ jawab dari lokal langsung
   if (skorTerbaik >= THRESHOLD_LOKAL && idxTerbaik !== -1) {
     return {
       jawaban: FAQ[idxTerbaik].jawaban,
@@ -846,13 +846,13 @@ async function cariJawaban(pertanyaan) {
     };
   }
 
-  // Skor rendah → coba AI
+  // Skor rendah â†’ coba AI
   const jawabanAI = await tanyaAI(pertanyaan);
   if (jawabanAI) {
     return { jawaban: jawabanAI, sumber: 'ai' };
   }
 
-  // Semua AI gagal → balik ke lokal (jawaban terbaik meski skornya rendah)
+  // Semua AI gagal â†’ balik ke lokal (jawaban terbaik meski skornya rendah)
   if (skorTerbaik >= THRESHOLD_FALLBACK && idxTerbaik !== -1) {
     return { jawaban: FAQ[idxTerbaik].jawaban, sumber: 'lokal_fallback' };
   }
@@ -864,3 +864,4 @@ async function cariJawaban(pertanyaan) {
 }
 
 module.exports = { cariJawaban };
+
