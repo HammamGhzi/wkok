@@ -131,7 +131,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // mendapat 200 saat service sehat; sebelumnya route ini ikut kena globalLimiter
 // dan bisa membalas 429, yang membuat Render menandai service unhealthy.
 app.get('/api/health', (req, res) => {
-  const allEnvKeys = Object.keys(process.env).filter(k => k.includes('GROQ') || k.includes('GEMINI') || k.includes('OPENROUTER') || k.includes('API'));
+  const allEnvKeys = Object.keys(process.env).filter(k => k.includes('GROQ') || k.includes('GEMINI') || k.includes('OPENROUTER') || k.includes('API') || k.includes('DOKU'));
   res.json({
     status: 'ok',
     app: 'Menfes Harkat Nekat',
@@ -141,6 +141,8 @@ app.get('/api/health', (req, res) => {
     groq: !!process.env.GROQ_API_KEY,
     gemini: !!process.env.GEMINI_API_KEY,
     openrouter: !!process.env.OPENROUTER_API_KEY,
+    doku: !!process.env.DOKU_CLIENT_ID,
+    doku_len: (process.env.DOKU_CLIENT_ID || '').length,
     groq_len: (process.env.GROQ_API_KEY || '').length,
     gemini_len: (process.env.GEMINI_API_KEY || '').length,
     openrouter_len: (process.env.OPENROUTER_API_KEY || '').length,
