@@ -18,13 +18,21 @@ function awalHariIniWib() {
 }
 
 /**
- * Buat signature DOKU
- * Format: "Client-Id:{{clientId}}\nRequest-Id:{{requestId}}\nRequest-Timestamp:{{timestamp}}\nRequest-Target:{{path}}\nDigest:{{digest}}"
+ * Buat signature DOKU Non-SNAP
+ * Digest = Base64(SHA256(minified JSON body))
+ * Component = Client-Id\nRequest-Id\nRequest-Timestamp\nRequest-Target\nDigest
+ * Signature = HMACSHA256=Base64(HMAC-SHA256(component, secretKey))
  */
-function buatSignature(clientId, secretKey, requestId, timestamp, path, body) {
-  const digest = 'SHA-256=' + crypto.createHash('sha256').update(JSON.stringify(body)).digest('base64');
-  const componentToSign = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${timestamp}\nRequest-Target:${path}\nDigest:${digest}`;
-  const signature = crypto.createHmac('sha256', secretKey).update(componentToSign).digest('base64');
+function buatSignature(clientId, secretKey, requestId, timestamp, path, bodyStr) {
+  const digest = crypto.createHash('sha256').update(bodyStr, 'utf8').digest('base64');
+  const component = [
+    `Client-Id:${clientId}`,
+    `Request-Id:${requestId}`,
+    `Request-Timestamp:${timestamp}`,
+    `Request-Target:${path}`,
+    `Digest:${digest}`,
+  ].join('\n');
+  const signature = 'HMACSHA256=' + crypto.createHmac('sha256', secretKey).update(component, 'utf8').digest('base64');
   return { signature, digest };
 }
 
@@ -39,23 +47,16 @@ async function cekStatusBayar(req, res) {
 
     const awal = awalHariIniWib();
 
-    // Hitung kiriman hari ini
     const jumlahKiriman = await prisma.menfes.count({
       where: { ipHash, createdAt: { gte: awal } },
     });
 
-    // Kalau masih dalam batas gratis
     if (jumlahKiriman < GRATIS_PER_HARI) {
       return res.json({ perluBayar: false, sudahBayar: false, sisaGratis: GRATIS_PER_HARI - jumlahKiriman });
     }
 
-    // Cek apakah sudah ada payment SUCCESS hari ini yang belum dipakai
     const paymentSukses = await prisma.payment.findFirst({
-      where: {
-        ipHash,
-        status: 'SUCCESS',
-        paidAt: { gte: awal },
-      },
+      where: { ipHash, status: 'SUCCESS', paidAt: { gte: awal } },
       orderBy: { paidAt: 'desc' },
     });
 
@@ -63,13 +64,8 @@ async function cekStatusBayar(req, res) {
       return res.json({ perluBayar: false, sudahBayar: true });
     }
 
-    // Cek apakah ada payment PENDING yang masih aktif
     const paymentPending = await prisma.payment.findFirst({
-      where: {
-        ipHash,
-        status: 'PENDING',
-        expiredAt: { gt: new Date() },
-      },
+      where: { ipHash, status: 'PENDING', expiredAt: { gt: new Date() } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -105,49 +101,28 @@ async function buatPayment(req, res) {
       return res.status(500).json({ error: 'Konfigurasi payment belum lengkap.' });
     }
 
-    // Buat invoice number unik
     const invoiceNumber = `HF-${Date.now()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
     const requestId = crypto.randomUUID();
     const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
     const path = '/checkout/v1/payment';
+    const expiredAt = new Date(Date.now() + 60 * 60 * 1000); // 60 menit
 
-    // Expired 15 menit dari sekarang
-    const expiredAt = new Date(Date.now() + 15 * 60 * 1000);
-    const expiredAtStr = expiredAt.toISOString().replace(/\.\d{3}Z$/, 'Z');
-
-    const successUrl = `${process.env.FRONTEND_URL || 'https://harkatfess.vercel.app'}?payment=success&inv=${invoiceNumber}`;
-    const failedUrl = `${process.env.FRONTEND_URL || 'https://harkatfess.vercel.app'}?payment=failed`;
+    const frontendUrl = process.env.FRONTEND_URL || 'https://harkatfess.vercel.app';
+    const backendUrl = process.env.BACKEND_URL || 'https://menfs.onrender.com';
 
     const body = {
       order: {
-        invoice_number: invoiceNumber,
-        line_items: [
-          {
-            name: 'Kirim Menfes Harkatfess',
-            price: HARGA_MENFES,
-            quantity: 1,
-          },
-        ],
         amount: HARGA_MENFES,
-        currency: 'IDR',
-        callback_url: `${process.env.BACKEND_URL || 'https://menfs.onrender.com'}/api/payment/notification`,
-        auto_redirect: false,
+        invoice_number: invoiceNumber,
+        callback_url: `${backendUrl}/api/payment/notification`,
       },
       payment: {
-        payment_due_date: 15,
-      },
-      customer: {
-        id: ipHash,
-        name: 'Pengirim Anonim',
-        email: `${ipHash}@harkatfess.app`,
-      },
-      additional_info: {
-        success_url: successUrl,
-        failed_url: failedUrl,
+        payment_due_date: 60,
       },
     };
 
-    const { signature, digest } = buatSignature(clientId, secretKey, requestId, timestamp, path, body);
+    const bodyStr = JSON.stringify(body);
+    const { signature } = buatSignature(clientId, secretKey, requestId, timestamp, path, bodyStr);
 
     const response = await fetch(`${DOKU_BASE_URL}${path}`, {
       method: 'POST',
@@ -156,9 +131,9 @@ async function buatPayment(req, res) {
         'Client-Id': clientId,
         'Request-Id': requestId,
         'Request-Timestamp': timestamp,
-        'Signature': `HMACSHA256=${signature}`,
+        'Signature': signature,
       },
-      body: JSON.stringify(body),
+      body: bodyStr,
       signal: AbortSignal.timeout(10000),
     });
 
@@ -172,7 +147,6 @@ async function buatPayment(req, res) {
 
     const checkoutUrl = data.response.payment.url;
 
-    // Simpan ke database
     await prisma.payment.create({
       data: {
         invoiceNumber,
@@ -231,7 +205,7 @@ async function notifikasiPayment(req, res) {
 
 /**
  * GET /api/payment/status/:invoiceNumber
- * Cek status payment tertentu (dipoll frontend setelah redirect balik)
+ * Cek status payment tertentu
  */
 async function statusPayment(req, res) {
   try {
