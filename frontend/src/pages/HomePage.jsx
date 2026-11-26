@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useState, useEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { menfesAPI, siteAPI, paymentAPI } from '../api';
 import { TEMPLATES, getTemplateById } from '../config/templates';
