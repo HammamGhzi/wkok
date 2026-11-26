@@ -42,6 +42,11 @@ function buatSignature(clientId, secretKey, requestId, timestamp, path, bodyStr)
  */
 async function cekStatusBayar(req, res) {
   try {
+    // Feature flag — kalau payment belum aktif, selalu return tidak perlu bayar
+    if (process.env.PAYMENT_ENABLED === 'false') {
+      return res.json({ perluBayar: false, sudahBayar: false });
+    }
+
     const ipHash = hashIp(req.ip);
     if (!ipHash) return res.json({ perluBayar: false, sudahBayar: false });
 
@@ -91,6 +96,11 @@ async function cekStatusBayar(req, res) {
  */
 async function buatPayment(req, res) {
   try {
+    // Feature flag — set PAYMENT_ENABLED=false di env untuk pause
+    if (process.env.PAYMENT_ENABLED === 'false') {
+      return res.status(503).json({ error: 'Fitur pembayaran belum aktif.' });
+    }
+
     const ipHash = hashIp(req.ip);
     if (!ipHash) return res.status(400).json({ error: 'IP tidak terdeteksi.' });
 
