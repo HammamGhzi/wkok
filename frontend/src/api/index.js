@@ -72,6 +72,24 @@ export const chatbotAPI = {
     api.post(`${CHATBOT_BASE_URL}/chatbot`, { pertanyaan }),
 };
 
+// ─── Payment DOKU ─────────────────────────────────────────────────────────
+export const paymentAPI = {
+  cekStatus: () =>
+    fetch(`${CHATBOT_BASE_URL}/payment/check`, { credentials: 'include' })
+      .then(r => r.json()),
+
+  buatPayment: () =>
+    fetch(`${CHATBOT_BASE_URL}/payment/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    }).then(r => r.json()),
+
+  cekStatusInvoice: (invoiceNumber) =>
+    fetch(`${CHATBOT_BASE_URL}/payment/status/${invoiceNumber}`, { credentials: 'include' })
+      .then(r => r.json()),
+};
+
 // ─── Admin ────────────────────────────────────────────────────────────────
 export const adminAPI = {
   getStats: () =>

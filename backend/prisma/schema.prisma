@@ -99,3 +99,25 @@ model Menfes {
   @@index([createdAt])
   @@index([igStatus])
 }
+
+// ── Payment DOKU ──────────────────────────────────────────────────────────────
+// Menyimpan satu baris per transaksi pembayaran menfes berbayar.
+// ipHash = hash IP pengirim (sama dengan di Menfes).
+// invoiceNumber = ID unik order ke DOKU.
+// status: PENDING | SUCCESS | FAILED | EXPIRED
+model Payment {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  ipHash        String
+  amount        Int      // dalam Rupiah
+  status        String   @default("PENDING")
+  checkoutUrl   String?  // URL halaman bayar DOKU
+  expiredAt     DateTime?
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([ipHash])
+  @@index([status])
+  @@index([invoiceNumber])
+}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { menfesAPI, siteAPI } from '../api';
+import { menfesAPI, siteAPI, paymentAPI } from '../api';
 import { TEMPLATES, getTemplateById } from '../config/templates';
 import TemplatePreview from '../components/TemplatePreview';
 import MusicPicker from '../components/MusicPicker';
@@ -370,6 +371,34 @@ export default function HomePage() {
     };
   }, [ulangCek]);
 
+  // Handle redirect balik dari DOKU setelah pembayaran
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get('payment');
+    const invoiceNumber = params.get('inv');
+
+    if (paymentStatus === 'success' && invoiceNumber) {
+      // Poll status payment sampai SUCCESS atau timeout
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const res = await paymentAPI.cekStatusInvoice(invoiceNumber);
+          if (res.status === 'SUCCESS') {
+            clearInterval(poll);
+            toast.success('Pembayaran berhasil! Silakan kirim menfesmu sekarang.');
+            // Bersihkan query params
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        } catch {}
+        if (attempts >= 10) clearInterval(poll);
+      }, 2000);
+    } else if (paymentStatus === 'failed') {
+      toast.error('Pembayaran gagal atau dibatalkan. Coba lagi.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   async function handleSubmit(e) {
     e.preventDefault();
     const trimmed = message.trim();
@@ -380,6 +409,21 @@ export default function HomePage() {
 
     setSubmitting(true);
     try {
+      // Cek apakah perlu bayar dulu
+      const statusBayar = await paymentAPI.cekStatus().catch(() => null);
+      if (statusBayar?.perluBayar) {
+        // Buat invoice dan redirect ke halaman bayar DOKU
+        const payment = await paymentAPI.buatPayment().catch(() => null);
+        if (payment?.checkoutUrl) {
+          setSubmitting(false);
+          window.location.href = payment.checkoutUrl;
+          return;
+        } else {
+          toast.error('Gagal membuat halaman pembayaran. Coba lagi.');
+          setSubmitting(false);
+          return;
+        }
+      }
       if (fotos.length || video) {
         // FormData: teks + byte lampiran dalam satu request. Field yang dikirim
         // identik dengan jalur JSON — bedanya cuma pembungkusnya. Nama field

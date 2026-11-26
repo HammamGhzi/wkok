@@ -18,6 +18,7 @@ const adminRoutes = require('./routes/admin');
 const siteRoutes = require('./routes/site');
 const musicRoutes = require('./routes/music');
 const chatbotRoutes = require('./routes/chatbot');
+const paymentRoutes = require('./routes/payment');
 const waPublishRoutes = require('./routes/waPublish');
 const authMiddleware = require('./middleware/auth');
 const { router: telegramRouter, registerTelegramCallbacks } = require('./routes/telegram');
@@ -173,6 +174,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/site', siteRoutes);
 app.use('/api/music', musicRoutes);
 app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/payment', paymentRoutes);
 app.use('/api/telegram', telegramRouter);
 
 // Link "Post ke IG" dari pesan WA. Tanpa auth admin: token bertanda tangan yang
