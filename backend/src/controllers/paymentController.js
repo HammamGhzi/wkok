@@ -165,7 +165,8 @@ async function buatPayment(req, res) {
     const data = await response.json();
 
     if (!response.ok || !data.response?.payment?.url) {
-      console.error('DOKU error:', data);
+      console.error('DOKU error status:', response.status);
+      console.error('DOKU error body:', JSON.stringify(data));
       return res.status(502).json({ error: 'Gagal membuat halaman pembayaran.' });
     }
 
